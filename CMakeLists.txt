@@ -19,7 +19,8 @@ find_package(fmt REQUIRED)
 
 
 add_library(carl
-    src/config_value.cpp
+    include/config_group.cpp
+    configs/camera_config.hpp
 )
 set_target_properties(carl PROPERTIES LINKER_LANGUAGE CXX)
 

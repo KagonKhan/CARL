@@ -1,17 +1,26 @@
+#include "configs/camera_config.hpp"
+#include "include/config_group.hpp"
 #include "include/config_value.hpp"
-
 using namespace CARL;
 
 #include <iostream>
 
+
 int main()
 {
-    ConfigValue<int> test_entry("TestEntry", Default {5});
+    CameraConfig camera;
 
-    YAML::Node node = YAML::Load("TestEntry: lmao");
+    YAML::Node node = YAML::LoadFile("/home/sszynk/projects/CARL/config.yaml");
+    camera.parse(node);
+    auto result = camera.validate();
 
-    test_entry.parse(node);
+    if (!result.correct) {
+        for (auto error : result.errors) {
+            std::cout << error << std::endl;
+        }
+    }
 
+    camera.printTo(std::cout);
 
-    std::cout << *test_entry << "\n";
+    // std::cout << *test_entry << "\n";
 }

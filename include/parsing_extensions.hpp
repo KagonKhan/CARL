@@ -1,0 +1,6 @@
+#ifndef CARL_PARSING_EXTENSIONS_HPP
+#define CARL_PARSING_EXTENSIONS_HPP
+
+#include <yaml-cpp/yaml.h>
+
+#endif // CARL_PARSING_EXTENSIONS_HPP

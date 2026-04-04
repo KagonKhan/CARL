@@ -1,7 +1,7 @@
 #ifndef CARL_I_CONFIG_VALUE_HPP
 #define CARL_I_CONFIG_VALUE_HPP
 
-#include "validation_result.hpp"
+#include "helpers.hpp"
 
 #include <yaml-cpp/yaml.h>
 
