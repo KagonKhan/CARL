@@ -1,5 +1,6 @@
 #include "configs/camera_config.hpp"
 #include "include/config_group.hpp"
+#include "include/config_map.hpp"
 #include "include/config_value.hpp"
 using namespace CARL;
 
@@ -8,11 +9,11 @@ using namespace CARL;
 
 int main()
 {
-    CameraConfig camera;
+    ConfigMap<CameraConfig> cameras {"cameras"};
 
     YAML::Node node = YAML::LoadFile("/home/sszynk/projects/CARL/config.yaml");
-    camera.parse(node);
-    auto result = camera.validate();
+    cameras.parse(node);
+    auto result = cameras.validate();
 
     if (!result.correct) {
         for (auto error : result.errors) {
@@ -20,7 +21,7 @@ int main()
         }
     }
 
-    camera.printTo(std::cout);
+    cameras.printTo(std::cout);
 
     // std::cout << *test_entry << "\n";
 }

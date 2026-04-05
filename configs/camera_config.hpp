@@ -26,7 +26,7 @@ public:
 
 public:
     CameraConfig()
-        : ConfigGroup("camera")
+        : ConfigGroup("")
     {
         register_(&width_);
         register_(&height_);

@@ -1,0 +1,25 @@
+cameras:
+- id: 1
+  width: 2
+  height: 69
+  calibration:
+    fx: 20
+    fy: 40
+- id: 2
+  width: 2
+  height: 69
+  calibration:
+    fx: 20
+    fy: 40
+- id: 3
+  width: 2
+  height: 69
+  calibration:
+    fx: 20
+    fy: 40
+- id: 4
+  width: 2
+  height: 69
+  calibration:
+    fx: 20
+    fy: 40
