@@ -17,15 +17,15 @@ public:
         CameraModel()
             : ConfigGroup("", Required::YES)
         {
-            register_(&tiltRange_);
-            register_(&panRange_);
-            register_(&focalLength_);
-
-            register_(&resolution_);
-            register_(&pixelDimensions_);
-            register_(&sensorDimensions_);
-
-            register_(&opticalZoom_);
+            register_(
+                tiltRange_,
+                panRange_,
+                focalLength_,
+                resolution_,
+                pixelDimensions_,
+                sensorDimensions_,
+                opticalZoom_
+            );
         }
 
     private:
@@ -41,11 +41,7 @@ public:
     };
 
 public:
-    PtzCamerasModels()
-        : ConfigGroup("")
-    {
-        register_(&models_);
-    }
+    PtzCamerasModels() { register_(models_); }
 
 private:
     ConfigMap<CameraModel, std::string> models_ {"ptzCamerasModels"};
@@ -61,12 +57,7 @@ public:
     DatabaseConfig()
         : ConfigGroup("database")
     {
-        register_(&server_);
-        register_(&user_);
-        register_(&password_);
-        register_(&name_);
-        register_(&mediaHash_);
-        register_(&port_);
+        register_(server_, user_, password_, name_, mediaHash_, port_);
     }
 
 private:
@@ -88,11 +79,7 @@ public:
         SensorSettings()
             : ConfigGroup("sensorSettings")
         {
-            register_(&maxExposureTime_);
-            register_(&spatialNoiseFilter_);
-            register_(&temporalNoiseFilter_);
-            register_(&localContrast_);
-            register_(&toneMapping_);
+            register_(maxExposureTime_, spatialNoiseFilter_, temporalNoiseFilter_, localContrast_, toneMapping_);
         }
 
     private:

@@ -59,12 +59,11 @@ void ConfigGroup::parse(YAML::Node const& node)
 
 void ConfigGroup::printTo(std::ostream& os, std::string const& indent) const
 {
-    std::string sub_indent = std::string(indent) + std::string(name_.empty()? 0 : 2, ' ');
-
     if (!name_.empty()) {
         os << indent << name_ << ":\n";
     }
 
+    std::string sub_indent = indent + std::string(name_.empty()? 0 : 2, ' ');
     for (auto& entry : entries_) {
         entry->printTo(os, sub_indent);
     }

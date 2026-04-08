@@ -14,35 +14,32 @@ void ConfigMap<Group, KeyType>::parse(YAML::Node const& node)
         throw ParsingError("'{}' node must be a YAML map type", this->niceName());
     }
 
-
     for (auto const& entry : map_node) {
-        if (!entry.IsMap()) {
+        // resolve map/list duality
+        YAML::Node key   = (mapType_ == MapType::ID_LIST)? entry["id"] : entry.first;
+        YAML::Node value = (mapType_ == MapType::ID_LIST)? YAML::Node(entry) : entry.second;
+
+        if (!value.IsMap()) {
             throw ParsingError("each entry in {} must be a map type", this->niceName());
         }
 
         KeyType id;
-
         try {
-            if (mapType_ == MapType::ID_LIST) {
-                id = entry["id"].as<KeyType>();
+            id = key.as<KeyType>();
+
+            if (entries_.count(id) > 0) {
+                throw ParsingError("duplicate id '{}' in '{}'", id, this->niceName());
             }
-            else {
-                id = entry.first.as<KeyType>();
-            }
+
+            auto group = std::make_unique<Group>();
+            group->parse(value);
+            entries_.emplace(std::move(id), std::move(group));
         }
         catch (YAML::Exception const& e) {
-            throw ParsingError("could not parse 'id' in '{}': {}", this->niceName(), e.what());
+            ParsingError("'{}' failed to parse id: {}", niceName(), e.what());
         }
-
-
-        if (entries_.count(id) > 0) {
-            throw ParsingError("duplicate id '{}' in '{}'", id, this->niceName());
-        }
-
-        auto group = std::make_unique<Group>();
-        group->parse(entry);
-        entries_.emplace(std::move(id), std::move(group));
     }
+
 
     wasParsed_ = true;
 }
@@ -79,17 +76,18 @@ void ConfigMap<Group, KeyType>::printTo(std::ostream& os, std::string const& ind
         os << indent << name_ << ":\n";
     }
 
+    std::string sub_indent = indent + std::string(name_.empty()? 0 : 2, ' ');
     if (mapType_ == MapType::STANDARD) {
         for (auto const& [id, group] : entries_) {
-            os << indent << id << ": \n";
-            group->printTo(os, indent + "  ");
+            os << sub_indent << id << ": \n";
+            group->printTo(os, sub_indent + "  ");
         }
     }
     else {
         // workaround for prettier printing
         for (auto const& [_, group] : entries_) {
             std::ostringstream temp;
-            group->printTo(temp, indent + "  ");
+            group->printTo(temp, sub_indent + "  ");
             std::string groupStr = temp.str();
 
             auto newline   = groupStr.find('\n');
@@ -97,7 +95,7 @@ void ConfigMap<Group, KeyType>::printTo(std::ostream& os, std::string const& ind
             auto rest      = (newline != std::string::npos)? groupStr.substr(newline + 1) : "";
 
             auto nonSpace = firstLine.find_first_not_of(' ');
-            os << indent << "- " << firstLine.substr(nonSpace) << '\n';
+            os << sub_indent << "- " << firstLine.substr(nonSpace) << '\n';
             os << rest;
         }
     }

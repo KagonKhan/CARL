@@ -22,8 +22,6 @@ protected:
         : name_(name),
           required_(required) {}
 
-    void register_(IConfigValue* value) { entries_.push_back(value); }
-
     template <typename ... Entries>
     void register_(Entries&... entries) { (entries_.push_back(&entries), ...); }
 

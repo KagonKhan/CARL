@@ -9,7 +9,7 @@ using namespace CARL;
 
 int main()
 {
-    StationsConfig cameras {};
+    PtzCamerasModels cameras {};
 
     YAML::Node node = YAML::LoadFile("/home/sszynk/projects/CARL/config.yaml");
     cameras.parse(node);
