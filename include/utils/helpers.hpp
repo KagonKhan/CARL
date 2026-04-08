@@ -1,6 +1,8 @@
 #ifndef CARL_VALIDATION_RESULT_HPP
 #define CARL_VALIDATION_RESULT_HPP
 
+#include <fmt/core.h>
+
 #include <string>
 #include <vector>
 
@@ -12,8 +14,13 @@ struct ValidationResult
     bool correct;
     std::vector<std::string> errors;
 
-    static ValidationResult success()                    { return {true, {}}; }
-    static ValidationResult failure(std::string message) { return {false, {std::move(message)}}; }
+    static constexpr ValidationResult success() { return {true, {}}; }
+
+    template <typename ... Args>
+    static constexpr ValidationResult failure(fmt::format_string<Args...> fmt_str, Args&&... args)
+    {
+        return {false, {fmt::format(fmt_str, std::forward<Args>(args)...)}};
+    }
 
     void merge(ValidationResult other)
     {

@@ -1,4 +1,4 @@
-#include "configs/camera_config.hpp"
+#include "configs/PtzCamerasModels.hpp"
 #include "include/config_group.hpp"
 #include "include/config_map.hpp"
 #include "include/config_value.hpp"
@@ -9,7 +9,7 @@ using namespace CARL;
 
 int main()
 {
-    ConfigMap<CameraConfig> cameras {"cameras"};
+    StationsConfig cameras {};
 
     YAML::Node node = YAML::LoadFile("/home/sszynk/projects/CARL/config.yaml");
     cameras.parse(node);

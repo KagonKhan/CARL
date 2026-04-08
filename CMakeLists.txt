@@ -20,7 +20,10 @@ find_package(fmt REQUIRED)
 
 add_library(carl
     include/config_group.cpp
-    configs/camera_config.hpp
+    include/config_map.hpp
+
+    
+    configs/PtzCamerasModels.hpp
 )
 set_target_properties(carl PROPERTIES LINKER_LANGUAGE CXX)
 

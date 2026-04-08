@@ -3,8 +3,21 @@
 namespace CARL
 {
 
+bool containsMember(std::vector<IConfigValue*> const& vec, std::string member_name)
+{
+    return std::any_of(
+        vec.begin(),
+        vec.end(),
+        [&member_name] (IConfigValue const* entry) { return entry->name() == member_name; }
+    );
+}
+
 void ConfigGroup::parse(YAML::Node const& node)
 {
+    if (containsMember(entries_, "id")) {
+        assert((entries_.front()->name() == "id") && "id member is required to be first if present");
+    }
+
     if (!node.IsMap()) {
         return;
     }
@@ -33,10 +46,7 @@ void ConfigGroup::parse(YAML::Node const& node)
         auto entry_result = entry->validate();
 
         for (auto& subentry : entry_result.errors) {
-            if (name_.empty()) {
-                subentry = fmt::format("{}", subentry);
-            }
-            else {
+            if (!name_.empty()) {
                 subentry = fmt::format("{}.{}", name_, subentry);
             }
         }
@@ -47,7 +57,7 @@ void ConfigGroup::parse(YAML::Node const& node)
     return result;
 }
 
-void ConfigGroup::printTo(std::ostream& os, std::string_view indent) const
+void ConfigGroup::printTo(std::ostream& os, std::string const& indent) const
 {
     std::string sub_indent = std::string(indent) + std::string(name_.empty()? 0 : 2, ' ');
 

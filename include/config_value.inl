@@ -34,14 +34,14 @@ template <typename T>
 ValidationResult ConfigValue<T>::validate() const
 {
     if ((required_ == Required::YES) && !value_.has_value()) {
-        return ValidationResult::failure(fmt::format("{}: is missing", name_));
+        return ValidationResult::failure("{}: is missing", name_);
     }
 
     return ValidationResult::success();
 }
 
 template <typename T>
-void ConfigValue<T>::printTo(std::ostream& os, std::string_view indent) const
+void ConfigValue<T>::printTo(std::ostream& os, std::string const& indent) const
 {
     if (value_) {
         os << indent << fmt::format("{}: {} {}\n", name_, *value_, wasParsed_? "" : "(default)");

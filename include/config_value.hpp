@@ -31,10 +31,10 @@ public:
 
 
 public:
-    void                           parse(YAML::Node const& node) override;
-    [[nodiscard]] ValidationResult validate() const override;
-    void                           printTo(std::ostream& os, std::string_view indent) const override;
-
+    void                             parse(YAML::Node const& node) override;
+    [[nodiscard]] ValidationResult   validate() const override;
+    void                             printTo(std::ostream& os, std::string const& indent) const override;
+    [[nodiscard]] std::string const& name() const noexcept override { return name_; }
 
     /// @brief function provided for edge-cases. use sparingly
     void     patch(T value)               { value_ = std::move(value); }
