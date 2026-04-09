@@ -87,7 +87,7 @@ void ConfigMap<Group, KeyType>::printTo(std::ostream& os, std::string const& ind
         // workaround for prettier printing
         for (auto const& [_, group] : entries_) {
             std::ostringstream temp;
-            group->printTo(temp, sub_indent + "  ");
+            group->printTo(temp, sub_indent);
             std::string groupStr = temp.str();
 
             auto newline   = groupStr.find('\n');
@@ -95,7 +95,7 @@ void ConfigMap<Group, KeyType>::printTo(std::ostream& os, std::string const& ind
             auto rest      = (newline != std::string::npos)? groupStr.substr(newline + 1) : "";
 
             auto nonSpace = firstLine.find_first_not_of(' ');
-            os << sub_indent << "- " << firstLine.substr(nonSpace) << '\n';
+            os << indent << "- " << firstLine.substr(nonSpace) << '\n';
             os << rest;
         }
     }

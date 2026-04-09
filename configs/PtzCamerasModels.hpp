@@ -120,17 +120,45 @@ public:
     class Calibration : public ConfigGroup
     {
     public:
+        class Sinusoidal : public ConfigGroup
+        {
+        public:
+            struct Values : ConfigGroup
+            {
+                explicit Values(std::string name)
+                    : ConfigGroup(name)
+                {
+                    register_(a_, b_, c_, d_, e_, f_, g_, h_, i_);
+                }
+
+                ConfigValue<int> a_ {"a"}, b_ {"b"}, c_ {"c"}, d_ {"d"}, e_ {"e"}, f_ {"f"}, g_ {"g"}, h_ {"h"},
+                i_ {"i"};
+            };
+        public:
+            Sinusoidal()
+                : ConfigGroup("sinusoidal")
+            {
+                register_(sin, pan);
+            }
+
+        private:
+            Values sin {"tilt"};
+            Values pan {"pan"};
+        };
+    public:
         Calibration()
             : ConfigGroup("calibration")
         {
-            register_(panAdjustment_, tiltAdjustment_, cameraPosition_);
+            register_(panAdjustment_, tiltAdjustment_, cameraPosition_, sin_);
         }
 
     private:
         ConfigValue<int>              panAdjustment_ {"panAdjustment"};
         ConfigValue<int>              tiltAdjustment_ {"tiltAdjustment"};
         ConfigValue<std::vector<int>> cameraPosition_ {"cameraPosition"};
+        Sinusoidal                    sin_;
     };
+
 public:
     PtzCameraConfig() { register_(id_, ip_, user_, password_, model_, sensorSettings_, calibration_); }
 
