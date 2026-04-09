@@ -44,7 +44,25 @@ template <typename T>
 void ConfigValue<T>::printTo(std::ostream& os, std::string const& indent) const
 {
     if (value_) {
-        os << indent << fmt::format("{}: {} {}\n", name_, *value_, wasParsed_? "" : "(default)");
+        std::ostringstream valueStream;
+        valueStream << *value_;
+        std::string valueStr = valueStream.str();
+
+        // re-indent every line of the value
+        std::string        indentedValue;
+        std::istringstream lines(valueStr);
+        std::string        line;
+        bool               first = true;
+        while (std::getline(lines, line)) {
+            if (!first) {
+                indentedValue += "\n" + indent + "  ";
+            }
+
+            indentedValue += line;
+            first          = false;
+        }
+
+        os << indent << fmt::format("{}: {} {}\n", name_, indentedValue, wasParsed_? "" : "(default)");
     }
     else {
         os << indent << fmt::format("{}: {}\n", name_, "<not set>");

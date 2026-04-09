@@ -33,7 +33,7 @@ struct fmt::formatter<Size2<T>>
     template <typename FormatContext>
     auto format(const Size2<T>& s, FormatContext& ctx) const
     {
-        return fmt::format_to(ctx.out(), "{{width: {}, height: {}}}", s.width, s.height);
+        return fmt::format_to(ctx.out(), "{{\n    width: {}, \n    height: {}\n}}", s.width, s.height);
     }
 };
 
@@ -103,7 +103,7 @@ std::ostream& operator <<(std::ostream& os, const std::vector<T>& vec)
 template <typename T>
 std::ostream& operator <<(std::ostream& os, Size2<T> const& size)
 {
-    os << "width: " << size.width << "\nheight: " << size.height;
+    os << "\nwidth: " << size.width << "\nheight: " << size.height;
     return os;
 }
 
