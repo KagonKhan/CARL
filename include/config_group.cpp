@@ -67,6 +67,10 @@ void ConfigGroup::printTo(std::ostream& os, std::string const& indent) const
     for (auto& entry : entries_) {
         entry->printTo(os, sub_indent);
     }
+
+    if (bool is_base_level = indent.empty(); is_base_level) {
+        os << "\n\n";
+    }
 }
 
 } // namespace CARL

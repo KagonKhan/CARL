@@ -8,14 +8,22 @@
 namespace CARL
 {
 
-class PtzCamerasModels : public ConfigGroup
+class GeneralConfig : public ConfigGroup
+{
+public:
+
+private:
+    ConfigValue<std::string> motylAddress_ {"motylAddress"};
+};
+
+
+class PtzCamerasModelsConfig : public ConfigGroup
 {
 public:
     class CameraModel : public ConfigGroup
     {
     public:
         CameraModel()
-            : ConfigGroup("", Required::YES)
         {
             register_(
                 tiltRange_,
@@ -24,8 +32,7 @@ public:
                 resolution_,
                 pixelDimensions_,
                 sensorDimensions_,
-                opticalZoom_
-            );
+                opticalZoom_);
         }
 
     private:
@@ -39,20 +46,17 @@ public:
 
         ConfigValue<int> opticalZoom_ {"opticalZoom"};
     };
-
 public:
-    PtzCamerasModels() { register_(models_); }
+    PtzCamerasModelsConfig()
+        : ConfigGroup("ptzCamerasModels") { register_(models_); }
 
 private:
-    ConfigMap<CameraModel, std::string> models_ {"ptzCamerasModels"};
+    ConfigMap<CameraModel, std::string> models_ {""};
 };
 
 
 class DatabaseConfig : public ConfigGroup
 {
-public:
-
-
 public:
     DatabaseConfig()
         : ConfigGroup("database")
@@ -69,8 +73,32 @@ private:
     ConfigValue<int>         port_ {"port"};
 };
 
+class CamerasConfig : public ConfigGroup
+{
+public:
+    class Camera : public ConfigGroup
+    {
+    public:
+        Camera() { register_(width_, height_, horizontalAngle_, verticalAngle_, vssWidth_, vssHeight_, f_); }
+    private:
+        ConfigValue<int> width_ {"width"};
+        ConfigValue<int> height_ {"height"};
+        ConfigValue<int> horizontalAngle_ {"horizontalAngle"};
+        ConfigValue<int> verticalAngle_ {"verticalAngle"};
+        ConfigValue<int> vssWidth_ {"vssWidth"};
+        ConfigValue<int> vssHeight_ {"vssHeight"};
+        ConfigValue<int> f_ {"f"};
+    };
+public:
+    CamerasConfig()
+        : ConfigGroup("cameras") { register_(cameras_); }
 
-class ptzCameraConfig : public ConfigGroup
+private:
+    ConfigMap<Camera, std::string> cameras_ {""};
+};
+
+
+class PtzCameraConfig : public ConfigGroup
 {
 public:
     class SensorSettings : public ConfigGroup
@@ -89,9 +117,22 @@ public:
         ConfigValue<int> localContrast_ {"localContrast"};
         ConfigValue<int> toneMapping_ {"toneMapping"};
     };
+    class Calibration : public ConfigGroup
+    {
+    public:
+        Calibration()
+            : ConfigGroup("calibration")
+        {
+            register_(panAdjustment_, tiltAdjustment_, cameraPosition_);
+        }
 
+    private:
+        ConfigValue<int>              panAdjustment_ {"panAdjustment"};
+        ConfigValue<int>              tiltAdjustment_ {"tiltAdjustment"};
+        ConfigValue<std::vector<int>> cameraPosition_ {"cameraPosition"};
+    };
 public:
-    ptzCameraConfig() { register_(id_, ip_, user_, password_, model_, sensorSettings_); }
+    PtzCameraConfig() { register_(id_, ip_, user_, password_, model_, sensorSettings_, calibration_); }
 
 private:
     ConfigValue<int>         id_ {"id"};
@@ -101,6 +142,7 @@ private:
     ConfigValue<std::string> model_ {"model"};
 
     SensorSettings sensorSettings_;
+    Calibration    calibration_;
 };
 
 class StationConfig : public ConfigGroup
@@ -111,7 +153,7 @@ public:
 private:
     ConfigValue<int>           id_ {"id"};
     ConfigValue<std::string>   name_ {"name"};
-    ConfigMap<ptzCameraConfig> ptzCameraConfig_ {"ptzCameras", MapType::ID_LIST};
+    ConfigMap<PtzCameraConfig> ptzCameraConfig_ {"ptzCameras", MapType::ID_LIST};
 };
 
 
@@ -122,6 +164,20 @@ public:
 
 private:
     ConfigMap<StationConfig> stations_ {"stations", MapType::ID_LIST};
+};
+
+
+class Config : public ConfigGroup
+{
+public:
+    Config() { register_(general_, ptzCamerasModels_, database_, cameras_, stations_); }
+
+private:
+    GeneralConfig          general_;
+    PtzCamerasModelsConfig ptzCamerasModels_;
+    DatabaseConfig         database_;
+    CamerasConfig          cameras_;
+    StationsConfig         stations_;
 };
 
 } // namespace CARL

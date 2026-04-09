@@ -1,8 +1,8 @@
 #ifndef CARL_PARSING_EXTENSIONS_HPP
 #define CARL_PARSING_EXTENSIONS_HPP
 
+#include <fmt/core.h>
 #include <yaml-cpp/yaml.h>
-
 
 template <typename T>
 struct Range
@@ -55,6 +55,50 @@ struct fmt::formatter<Range<T>>
         return fmt::format_to(ctx.out(), "{{width: {}, height: {}}}", s.min, s.max);
     }
 };
+
+template <typename T>
+struct fmt::formatter<std::vector<T>>
+{
+    // Parses format specifications (none needed here)
+    constexpr auto parse(format_parse_context& ctx)
+    {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(const std::vector<T>& vec, FormatContext& ctx) const
+    {
+        auto out = ctx.out();
+        *out++   = '[';
+
+        for (size_t i = 0; i < vec.size(); ++i) {
+            out = fmt::format_to(out, "{}", vec[i]);
+            if (i + 1 < vec.size()) {
+                *out++ = ',';
+                *out++ = ' ';
+            }
+        }
+
+        *out++ = ']';
+        return out;
+    }
+};
+
+template <typename T>
+std::ostream& operator <<(std::ostream& os, const std::vector<T>& vec)
+{
+    os << '[';
+
+    for (size_t i = 0; i < vec.size(); ++i) {
+        os << vec[i];
+        if (i + 1 < vec.size()) {
+            os << ", ";
+        }
+    }
+
+    os << ']';
+    return os;
+}
 
 template <typename T>
 std::ostream& operator <<(std::ostream& os, Size2<T> const& size)

@@ -15,7 +15,7 @@ void ConfigMap<Group, KeyType>::parse(YAML::Node const& node)
     }
 
     for (auto const& entry : map_node) {
-        // resolve map/list duality
+        // resolve map/list traversal duality
         YAML::Node key   = (mapType_ == MapType::ID_LIST)? entry["id"] : entry.first;
         YAML::Node value = (mapType_ == MapType::ID_LIST)? YAML::Node(entry) : entry.second;
 

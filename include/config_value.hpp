@@ -1,6 +1,8 @@
 #ifndef CARL_CONFIG_VALUE_HPP
 #define CARL_CONFIG_VALUE_HPP
 
+#include "utils/parsing_extensions.hpp"
+
 #include "iconfig_value.hpp"
 #include "utils/config_exception.hpp"
 #include "utils/constraints.hpp"
