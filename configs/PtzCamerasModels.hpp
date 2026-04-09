@@ -25,7 +25,7 @@ public:
     public:
         CameraModel()
         {
-            register_(
+            registerEntries(
                 tiltRange_,
                 panRange_,
                 focalLength_,
@@ -48,7 +48,7 @@ public:
     };
 public:
     PtzCamerasModelsConfig()
-        : ConfigGroup("ptzCamerasModels") { register_(models_); }
+        : ConfigGroup("ptzCamerasModels") { registerEntries(models_); }
 
 private:
     ConfigMap<CameraModel, std::string> models_ {""};
@@ -61,7 +61,7 @@ public:
     DatabaseConfig()
         : ConfigGroup("database")
     {
-        register_(server_, user_, password_, name_, mediaHash_, port_);
+        registerEntries(server_, user_, password_, name_, mediaHash_, port_);
     }
 
 private:
@@ -79,7 +79,7 @@ public:
     class Camera : public ConfigGroup
     {
     public:
-        Camera() { register_(width_, height_, horizontalAngle_, verticalAngle_, vssWidth_, vssHeight_, f_); }
+        Camera() { registerEntries(width_, height_, horizontalAngle_, verticalAngle_, vssWidth_, vssHeight_, f_); }
     private:
         ConfigValue<int> width_ {"width"};
         ConfigValue<int> height_ {"height"};
@@ -91,7 +91,7 @@ public:
     };
 public:
     CamerasConfig()
-        : ConfigGroup("cameras") { register_(cameras_); }
+        : ConfigGroup("cameras") { registerEntries(cameras_); }
 
 private:
     ConfigMap<Camera, std::string> cameras_ {""};
@@ -107,7 +107,7 @@ public:
         SensorSettings()
             : ConfigGroup("sensorSettings")
         {
-            register_(maxExposureTime_, spatialNoiseFilter_, temporalNoiseFilter_, localContrast_, toneMapping_);
+            registerEntries(maxExposureTime_, spatialNoiseFilter_, temporalNoiseFilter_, localContrast_, toneMapping_);
         }
 
     private:
@@ -115,7 +115,7 @@ public:
         ConfigValue<int> spatialNoiseFilter_ {"spatialNoiseFilter"};
         ConfigValue<int> temporalNoiseFilter_ {"temporalNoiseFilter"};
         ConfigValue<int> localContrast_ {"localContrast"};
-        ConfigValue<int> toneMapping_ {"toneMapping"};
+        ConfigValue<int> toneMapping_ {"toneMapping", Default<int>{50}};
     };
     class Calibration : public ConfigGroup
     {
@@ -128,7 +128,7 @@ public:
                 explicit Values(std::string name)
                     : ConfigGroup(name)
                 {
-                    register_(a_, b_, c_, d_, e_, f_, g_, h_, i_);
+                    registerEntries(a_, b_, c_, d_, e_, f_, g_, h_, i_);
                 }
 
                 ConfigValue<int> a_ {"a"}, b_ {"b"}, c_ {"c"}, d_ {"d"}, e_ {"e"}, f_ {"f"}, g_ {"g"}, h_ {"h"},
@@ -138,7 +138,7 @@ public:
             Sinusoidal()
                 : ConfigGroup("sinusoidal")
             {
-                register_(sin, pan);
+                registerEntries(sin, pan);
             }
 
         private:
@@ -149,7 +149,7 @@ public:
         Calibration()
             : ConfigGroup("calibration")
         {
-            register_(panAdjustment_, tiltAdjustment_, cameraPosition_, sin_);
+            registerEntries(panAdjustment_, tiltAdjustment_, cameraPosition_, sin_);
         }
 
     private:
@@ -160,7 +160,7 @@ public:
     };
 
 public:
-    PtzCameraConfig() { register_(id_, ip_, user_, password_, model_, sensorSettings_, calibration_); }
+    PtzCameraConfig() { registerEntries(id_, ip_, user_, password_, model_, sensorSettings_, calibration_); }
 
 private:
     ConfigValue<int>         id_ {"id"};
@@ -176,7 +176,7 @@ private:
 class StationConfig : public ConfigGroup
 {
 public:
-    StationConfig() { register_(id_, name_, ptzCameraConfig_); }
+    StationConfig() { registerEntries(id_, name_, ptzCameraConfig_); }
 
 private:
     ConfigValue<int>           id_ {"id"};
@@ -188,7 +188,7 @@ private:
 class StationsConfig : public ConfigGroup
 {
 public:
-    StationsConfig() { register_(stations_); }
+    StationsConfig() { registerEntries(stations_); }
 
 private:
     ConfigMap<StationConfig> stations_ {"stations", MapType::ID_LIST};
@@ -198,7 +198,7 @@ private:
 class Config : public ConfigGroup
 {
 public:
-    Config() { register_(general_, ptzCamerasModels_, database_, cameras_, stations_); }
+    Config() { registerEntries(general_, ptzCamerasModels_, database_, cameras_, stations_); }
 
 private:
     GeneralConfig          general_;

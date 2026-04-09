@@ -2,7 +2,7 @@
 #define CARL_CONFIG_MAP_HPP
 
 #include "iconfig_value.hpp"
-#include "utils/config_exception.hpp"
+#include "utils/exceptions.hpp"
 
 #include <iostream>
 #include <map>
@@ -27,10 +27,10 @@ public:
           mapType_(type),
           isRequired_(required) {}
 
-    void                             parse(YAML::Node const& node) override;
-    [[nodiscard]] ValidationResult   validate() const override;
-    void                             printTo(std::ostream& os, std::string const& indent = "") const override;
-    [[nodiscard]] std::string const& name() const noexcept override { return name_; }
+    void                           parse(YAML::Node const& node) override;
+    [[nodiscard]] ValidationResult validate() const override;
+    void                           printTo(std::ostream& os, std::string const& indent = "") const override;
+    [[nodiscard]] std::string_view name() const noexcept override { return name_; }
 
 private:
     std::string name_;

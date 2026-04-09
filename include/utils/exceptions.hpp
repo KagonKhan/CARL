@@ -4,7 +4,6 @@
 #include <fmt/core.h>
 
 #include <stdexcept>
-#include <string>
 
 namespace CARL
 {

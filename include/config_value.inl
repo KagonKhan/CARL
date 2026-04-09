@@ -1,16 +1,21 @@
+#include "utils/utils.hpp"
+
 namespace CARL
 {
 
 template <typename T>
-constexpr ConfigValue<T>::ConfigValue(std::string name, Required required)
+ConfigValue<T>::ConfigValue(std::string name, Required required)
     : name_(std::move(name)),
-      required_(required) {}
+      required_(required),
+      value_(std::nullopt),
+      source_(ValueSource::unset()) {}
 
 template <typename T>
-constexpr ConfigValue<T>::ConfigValue(std::string name, Default<T> default_value)
+ConfigValue<T>::ConfigValue(std::string name, Default<T> default_value)
     : name_(std::move(name)),
       required_(Required::NO),
-      value_(std::move(default_value.value)) {}
+      value_(std::move(default_value.value)),
+      source_(ValueSource::fromDefault()) {}
 
 template <typename T>
 void ConfigValue<T>::parse(YAML::Node const& node)
@@ -21,8 +26,8 @@ void ConfigValue<T>::parse(YAML::Node const& node)
 
     if (auto field = node[name_]) {
         try {
-            value_     = field.as<T>();
-            wasParsed_ = true;
+            value_ = field.as<T>();
+            source_.markParsed();
         }
         catch (YAML::Exception const& e) {
             throw ParsingError("Could not parse {}, with: {}", name_, e.what());
@@ -33,40 +38,23 @@ void ConfigValue<T>::parse(YAML::Node const& node)
 template <typename T>
 ValidationResult ConfigValue<T>::validate() const
 {
-    if ((required_ == Required::YES) && !value_.has_value()) {
+    if (required_ && !source_.isSet()) {
         return ValidationResult::failure("{}: is missing", name_);
     }
-
-    return ValidationResult::success();
+    else {
+        return ValidationResult::success();
+    }
 }
 
 template <typename T>
 void ConfigValue<T>::printTo(std::ostream& os, std::string const& indent) const
 {
+    std::ostringstream ss;
     if (value_) {
-        std::ostringstream valueStream;
-        valueStream << *value_;
-        std::string valueStr = valueStream.str();
-
-        // re-indent every line of the value
-        std::string        indentedValue;
-        std::istringstream lines(valueStr);
-        std::string        line;
-        bool               first = true;
-        while (std::getline(lines, line)) {
-            if (!first) {
-                indentedValue += "\n" + indent + "  ";
-            }
-
-            indentedValue += line;
-            first          = false;
-        }
-
-        os << indent << fmt::format("{}: {} {}\n", name_, indentedValue, wasParsed_? "" : "(default)");
+        ss << *value_;
     }
-    else {
-        os << indent << fmt::format("{}: {}\n", name_, "<not set>");
-    }
+
+    os << indent << fmt::format("{}: {} {}\n", name_, reindent(ss.str(), indent), source_.displayTag());
 }
 
 } // namespace CARL

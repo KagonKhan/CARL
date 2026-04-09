@@ -1,25 +1,27 @@
 #include "config_group.hpp"
-#include <iostream>
-namespace CARL
+
+namespace
 {
 
-bool containsMember(std::vector<IConfigValue*> const& vec, std::string member_name)
+bool containsMember(std::vector<CARL::IConfigValue*> const& vec, std::string member_name)
 {
     return std::any_of(
         vec.begin(),
         vec.end(),
-        [&member_name] (IConfigValue const* entry) { return entry->name() == member_name; }
+        [&member_name] (CARL::IConfigValue const* entry) { return entry->name() == member_name; }
     );
 }
+
+} // namespace
+
+
+namespace CARL
+{
 
 void ConfigGroup::parse(YAML::Node const& node)
 {
     if (containsMember(entries_, "id")) {
         assert((entries_.front()->name() == "id") && "id member is required to be first if present");
-    }
-
-    if (!node.IsMap()) {
-        return;
     }
 
     // Allow for parsing nameless groups -> main level or list entry
@@ -29,29 +31,29 @@ void ConfigGroup::parse(YAML::Node const& node)
     }
 
 
-    for (auto& entry : entries_) {
+    for (auto* entry : entries_) {
         entry->parse(entry_node);
     }
 }
 
 [[nodiscard]] ValidationResult ConfigGroup::validate() const
 {
-    if (required_ == Required::NO) {
+    if (!required_) {
         return {};
     }
 
     ValidationResult result = ValidationResult::success();
 
-    for (auto& entry : entries_) {
-        auto entry_result = entry->validate();
+    for (auto const* entry : entries_) {
+        ValidationResult prefixed = entry->validate();
 
-        for (auto& subentry : entry_result.errors) {
-            if (!name_.empty()) {
-                subentry = fmt::format("{}.{}", name_, subentry);
+        if (!name_.empty()) {
+            for (auto& prefixed_error : prefixed.errors) {
+                prefixed_error = fmt::format("{}.{}", name_, prefixed_error);
             }
         }
 
-        result.merge(entry_result);
+        result.merge(prefixed);
     }
 
     return result;
@@ -64,10 +66,13 @@ void ConfigGroup::printTo(std::ostream& os, std::string const& indent) const
     }
 
     std::string sub_indent = indent + std::string(name_.empty()? 0 : 2, ' ');
-    for (auto& entry : entries_) {
+    for (auto* entry : entries_) {
         entry->printTo(os, sub_indent);
     }
 
+    // WARNING: this might be brittle, if you decide to print the config with an indent it would break.
+    //          I'm not sure it's necessary to work on a "clean" solution right now, as it would require adding members
+    //          to ConfigGroup that signify "isBase" or something like that
     if (bool is_base_level = indent.empty(); is_base_level) {
         os << "\n\n";
     }

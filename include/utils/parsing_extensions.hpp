@@ -19,71 +19,6 @@ struct Size2
 };
 
 
-// fmt formatter specialization
-template <typename T>
-struct fmt::formatter<Size2<T>>
-{
-    // Parses format specifications (none needed here)
-    constexpr auto parse(format_parse_context& ctx)
-    {
-        return ctx.begin();
-    }
-
-    // Formats the struct
-    template <typename FormatContext>
-    auto format(const Size2<T>& s, FormatContext& ctx) const
-    {
-        return fmt::format_to(ctx.out(), "{{\n    width: {}, \n    height: {}\n}}", s.width, s.height);
-    }
-};
-
-
-// fmt formatter specialization
-template <typename T>
-struct fmt::formatter<Range<T>>
-{
-    // Parses format specifications (none needed here)
-    constexpr auto parse(format_parse_context& ctx)
-    {
-        return ctx.begin();
-    }
-
-    // Formats the struct
-    template <typename FormatContext>
-    auto format(const Range<T>& s, FormatContext& ctx) const
-    {
-        return fmt::format_to(ctx.out(), "{{width: {}, height: {}}}", s.min, s.max);
-    }
-};
-
-template <typename T>
-struct fmt::formatter<std::vector<T>>
-{
-    // Parses format specifications (none needed here)
-    constexpr auto parse(format_parse_context& ctx)
-    {
-        return ctx.begin();
-    }
-
-    template <typename FormatContext>
-    auto format(const std::vector<T>& vec, FormatContext& ctx) const
-    {
-        auto out = ctx.out();
-        *out++   = '[';
-
-        for (size_t i = 0; i < vec.size(); ++i) {
-            out = fmt::format_to(out, "{}", vec[i]);
-            if (i + 1 < vec.size()) {
-                *out++ = ',';
-                *out++ = ' ';
-            }
-        }
-
-        *out++ = ']';
-        return out;
-    }
-};
-
 template <typename T>
 std::ostream& operator <<(std::ostream& os, const std::vector<T>& vec)
 {
@@ -103,7 +38,7 @@ std::ostream& operator <<(std::ostream& os, const std::vector<T>& vec)
 template <typename T>
 std::ostream& operator <<(std::ostream& os, Size2<T> const& size)
 {
-    os << "\nwidth: " << size.width << "\nheight: " << size.height;
+    os << "width: " << size.width << "\nheight: " << size.height;
     return os;
 }
 
