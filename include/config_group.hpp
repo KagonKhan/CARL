@@ -21,7 +21,8 @@ public:
 protected:
     explicit ConfigGroup(std::string name = "", Required required = Required::YES)
         : name_(std::move(name)),
-          required_(required) {}
+          required_(required),
+          wasParsed_{false} {}
     ~ConfigGroup() noexcept override = default;
 
     ConfigGroup(const ConfigGroup&)             = delete;
@@ -29,6 +30,7 @@ protected:
     ConfigGroup& operator =(const ConfigGroup&) = delete;
     ConfigGroup& operator =(ConfigGroup&&)      = delete;
 
+    /// @brief entries must be members of this subclass see entries_ lifetime contract. Obviously, don't register random entries.
     template <typename ... Entries>
     void registerEntries(Entries&... entries)
     {
@@ -42,6 +44,7 @@ protected:
 private:
     std::string name_;
     Required    required_;
+    bool        wasParsed_;
 
     std::vector<IConfigValue*> entries_;
 };

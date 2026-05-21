@@ -18,11 +18,11 @@ template <typename Group, typename KeyType = int>
 class ConfigMap : public IConfigValue
 {
 public:
-    // static asserts
+    static_assert(std::is_default_constructible_v<Group>, "ConfigMap<Group>: Group must be default-constructible");
 
 
 public:
-    explicit constexpr ConfigMap(std::string name, MapType type = MapType::STANDARD, Required required = Required::YES)
+    explicit ConfigMap(std::string name, MapType type = MapType::STANDARD, Required required = Required::YES)
         : name_(std::move(name)),
           mapType_(type),
           isRequired_(required) {}
@@ -40,7 +40,7 @@ private:
     std::map<KeyType, std::unique_ptr<Group>> entries_;
     bool                                      wasParsed_ {false};
 
-    constexpr std::string niceName() const { return name_.empty()? "`nameless map`" : name_; }
+    std::string niceName() const { return name_.empty()? "`nameless map`" : name_; }
 };
 
 } // namespace CARL

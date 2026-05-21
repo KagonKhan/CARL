@@ -20,7 +20,7 @@ ConfigValue<T>::ConfigValue(std::string name, Default<T> default_value)
 template <typename T>
 void ConfigValue<T>::parse(YAML::Node const& node)
 {
-    if (!node.IsMap()) {
+    if (!node.IsNull() && !node.IsMap()) {
         throw ParsingError("expected a map node while parsing field '{}'", name_);
     }
 

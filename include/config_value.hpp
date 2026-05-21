@@ -1,7 +1,6 @@
 #ifndef CARL_CONFIG_VALUE_HPP
 #define CARL_CONFIG_VALUE_HPP
 
-#include "utils/parsing_extensions.hpp"
 
 #include "iconfig_value.hpp"
 #include "utils/constraints.hpp"
@@ -40,8 +39,14 @@ public:
     [[nodiscard]] std::string_view name() const noexcept override { return name_; }
 
     /// @brief function provided for edge-cases. use sparingly
-    void     patch(T value)               { value_ = std::move(value); }
-    const T& operator *() const& noexcept { return assertInitialized(), *value_; }
+    void patch(T value) { value_ = std::move(value); }
+
+    const T& value() const& noexcept { return assertInitialized(), *value_; }
+
+    explicit operator const T&() const noexcept { return assertInitialized(), *value_; }
+    const T& operator *() const& noexcept       { return assertInitialized(), *value_; }
+    const T* operator ->() const& noexcept      { return assertInitialized(), std::addressof(*value_); }
+
 
 private:
     std::string      name_;

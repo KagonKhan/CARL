@@ -4,7 +4,10 @@
 #include <fmt/core.h>
 
 #include <string>
+#include <vector>
 
+namespace CARL
+{
 
 /// @brief Wrapper for validating the entire config tree, allowing for merging of messages.
 struct ValidationResult
@@ -12,10 +15,10 @@ struct ValidationResult
     bool correct;
     std::vector<std::string> errors;
 
-    static constexpr ValidationResult success() { return {true, {}}; }
+    static ValidationResult success() { return {true, {}}; }
 
     template <typename ... Args>
-    static constexpr ValidationResult failure(fmt::format_string<Args...> fmt_str, Args&&... args)
+    static ValidationResult failure(fmt::format_string<Args...> fmt_str, Args&&... args)
     {
         return {false, {fmt::format(fmt_str, std::forward<Args>(args)...)}};
     }
@@ -24,7 +27,11 @@ struct ValidationResult
     {
         if (!other.correct) {
             correct = false;
-            errors.insert(errors.end(), other.errors.begin(), other.errors.end());
+            errors.insert(
+                errors.end(),
+                std::make_move_iterator(other.errors.begin()),
+                std::make_move_iterator(other.errors.end())
+            );
         }
     }
 };
@@ -135,5 +142,7 @@ inline std::string reindent(std::string_view text, std::string_view indent)
 
     return result;
 }
+
+} // namespace CARL
 
 #endif // CARL_UTILS_UTILS_HPP

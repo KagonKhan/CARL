@@ -3,7 +3,7 @@
 namespace
 {
 
-bool containsMember(std::vector<CARL::IConfigValue*> const& vec, std::string member_name)
+bool containsMember(std::vector<CARL::IConfigValue*> const& vec, std::string const& member_name)
 {
     return std::any_of(
         vec.begin(),
@@ -30,6 +30,7 @@ void ConfigGroup::parse(YAML::Node const& node)
         return;
     }
 
+    wasParsed_ = true;
 
     for (auto* entry : entries_) {
         entry->parse(entry_node);
@@ -38,8 +39,8 @@ void ConfigGroup::parse(YAML::Node const& node)
 
 [[nodiscard]] ValidationResult ConfigGroup::validate() const
 {
-    if (!required_) {
-        return {};
+    if (!required_ && !wasParsed_) {
+        return ValidationResult::success();
     }
 
     ValidationResult result = ValidationResult::success();

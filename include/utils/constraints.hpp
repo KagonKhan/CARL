@@ -23,9 +23,15 @@ struct is_yaml_parsable : std::false_type {};
 
 template <typename T>
 struct is_yaml_parsable<
-    T, std::void_t<decltype(std::declval<YAML::Node>().as<T>())>
+    T, std::void_t<decltype(YAML::convert<T>::decode(
+        std::declval<const YAML::Node&>(),
+        std::declval<T&>()))>
 > : std::true_type {};
 
+// Users can add this in their extension headers to validate early:
+// static_assert(CARL::is_carl_parseable<MyType>, "MyType needs YAML::convert<> and operator<<");
+template <typename T>
+constexpr bool is_carl_parseable = is_yaml_parsable<T>::value && is_printable<T>::value;
 
 // Concept when they become available
 // template<typename T>

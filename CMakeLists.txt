@@ -1,12 +1,6 @@
-cmake_minimum_required (VERSION 3.23)
+cmake_minimum_required(VERSION 3.23)
 
-# Enable Hot Reload for MSVC compilers if supported.
-if (POLICY CMP0141)
-  cmake_policy(SET CMP0141 NEW)
-  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
-endif()
-
-project (CARL CXX)
+project(CARL VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 
@@ -16,23 +10,42 @@ find_package(fmt REQUIRED)
 
 
 # =======================    PROJECT    ==========================
-
-
 add_library(carl
-    include/config_group.cpp
-    include/config_map.hpp
-
-    
-    configs/PtzCamerasModels.hpp
+    src/config_group.cpp
 )
-set_target_properties(carl PROPERTIES LINKER_LANGUAGE CXX)
+
+target_compile_features(carl PUBLIC cxx_std_17)
 
 target_link_libraries(carl PUBLIC
     yaml-cpp::yaml-cpp
     fmt::fmt
 )
-target_include_directories(carl PUBLIC include)
 
-add_executable(main main.cpp)
-target_link_libraries(main carl)
+target_include_directories(carl PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
 
+add_library(carl::carl ALIAS carl)
+
+
+# =======================    TESTS    ============================
+option(CARL_BUILD_TESTS "Build tests" ON)
+if(CARL_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+
+# =======================    INSTALL    ==========================
+include(GNUInstallDirs)
+
+install(TARGETS carl
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)

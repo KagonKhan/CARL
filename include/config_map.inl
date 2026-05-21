@@ -6,6 +6,9 @@ void ConfigMap<Group, KeyType>::parse(YAML::Node const& node)
 {
     // Allow for same-level maps (e.g., global entries without a wrapping name)
     YAML::Node map_node = name_.empty()? node : node[name_];
+    if (!map_node.IsDefined()) {
+        return;
+    }
 
     if ((mapType_ == MapType::ID_LIST) && !map_node.IsSequence()) {
         throw ParsingError("'{}' node must be a YAML sequence type", this->niceName());
@@ -36,7 +39,7 @@ void ConfigMap<Group, KeyType>::parse(YAML::Node const& node)
             entries_.emplace(std::move(id), std::move(group));
         }
         catch (YAML::Exception const& e) {
-            ParsingError("'{}' failed to parse id: {}", niceName(), e.what());
+            throw ParsingError("'{}' failed to parse id: {}", niceName(), e.what());
         }
     }
 
