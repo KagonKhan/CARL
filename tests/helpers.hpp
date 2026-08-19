@@ -1,4 +1,5 @@
-#pragma once
+#ifndef CARL_TESTS_HELPERS_HPP
+#define CARL_TESTS_HELPERS_HPP
 
 #include "config_group.hpp"
 #include "config_map.hpp"
@@ -112,3 +113,5 @@ struct GroupWithNested : CARL::ConfigGroup
 };
 
 } // namespace th
+
+#endif // CARL_TESTS_HELPERS_HPP
