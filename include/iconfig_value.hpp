@@ -5,6 +5,9 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <ostream>
+#include <string_view>
+
 
 namespace CARL
 {
@@ -26,6 +29,14 @@ public:
     virtual void                           printTo(std::ostream& os, std::string const& indent) const = 0;
     [[nodiscard]] virtual std::string_view name() const noexcept                                      = 0;
 };
+
+/// @brief true for nodes that may be indexed by key. yaml-cpp throws BadSubscript when a scalar is subscripted, and a
+///        null node stands in for an empty mapping, so both must be screened before reaching into a node.
+/// @note  the node must be valid (defined or zombie-checked by the caller); querying the type of an invalid node throws
+[[nodiscard]] inline bool isMapOrNull(YAML::Node const& node)
+{
+    return node.IsNull() || node.IsMap();
+}
 
 } // namespace CARL
 

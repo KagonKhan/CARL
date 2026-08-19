@@ -165,6 +165,83 @@ TEST(ConfigGroupValidate, OptionalFieldAllowedMissing) {
 }
 
 // ============================================================
+//  validate() — required group that never got parsed
+// ============================================================
+
+TEST(ConfigGroupValidate, AbsentRequiredGroupGivesOneGroupLevelError) {
+    th::NamedPairGroup g {"coords"};
+    auto               node = YAML::Load("something_else: 1");
+    g.parse(node);
+    auto result = g.validate();
+    EXPECT_FALSE(result.correct);
+    ASSERT_EQ(result.errors.size(), 1u);
+    EXPECT_EQ(result.errors[0], "coords: is missing");
+}
+
+TEST(ConfigGroupValidate, AbsentRequiredGroupWithOnlyDefaultedFieldsIsFailure) {
+    // Every field has a default, so descending into the entries can never report anything. The group itself is
+    // required and absent, and that has to be caught.
+    th::AllDefaultedSection g;
+    auto                    node = YAML::Load("something_else: 1");
+    g.parse(node);
+    auto result = g.validate();
+    EXPECT_FALSE(result.correct);
+    ASSERT_EQ(result.errors.size(), 1u);
+    EXPECT_EQ(result.errors[0], "database: is missing");
+}
+
+TEST(ConfigGroupValidate, NeverParsedRequiredGroupIsFailure) {
+    th::AllDefaultedSection g;
+    EXPECT_FALSE(g.validate().correct);
+}
+
+TEST(ConfigGroupValidate, PresentGroupWithOnlyDefaultedFieldsIsSuccess) {
+    th::AllDefaultedSection g;
+    auto                    node = YAML::Load("database: {}");
+    g.parse(node);
+    EXPECT_TRUE(g.validate().correct);
+    EXPECT_EQ(*g.port, 5432);
+}
+
+// ============================================================
+//  parse() — node type guards
+// ============================================================
+
+TEST(ConfigGroupParse, ScalarWhereGroupExpectedThrowsParsingError) {
+    th::NamedPairGroup g;
+    auto               node = YAML::Load("pair: hello");
+    EXPECT_THROW(g.parse(node), CARL::ParsingError);
+}
+
+TEST(ConfigGroupParse, ScalarUnderNestedGroupThrowsParsingErrorNotYamlError) {
+    // Reaching into a scalar makes yaml-cpp throw BadSubscript; that must surface as a CARL error.
+    th::GroupWithNested g;
+    auto                node = YAML::Load("outer: hello");
+    EXPECT_THROW(g.parse(node), CARL::ParsingError);
+}
+
+TEST(ConfigGroupParse, SequenceWhereGroupExpectedThrowsParsingError) {
+    th::NamedPairGroup g;
+    auto               node = YAML::Load("pair:\n  - 1\n  - 2");
+    EXPECT_THROW(g.parse(node), CARL::ParsingError);
+}
+
+TEST(ConfigGroupParse, ScalarParentNodeThrowsParsingError) {
+    th::NamedPairGroup g;
+    auto               node = YAML::Load("just_a_scalar");
+    EXPECT_THROW(g.parse(node), CARL::ParsingError);
+}
+
+TEST(ConfigGroupParse, NullGroupNodeIsTreatedAsEmptyMap) {
+    th::NamedPairGroup g;
+    auto               node = YAML::Load("pair:");  // key present, value null
+    EXPECT_NO_THROW(g.parse(node));
+    auto result = g.validate();
+    EXPECT_FALSE(result.correct);
+    EXPECT_EQ(result.errors.size(), 2u);  // descended into the group, both fields missing
+}
+
+// ============================================================
 //  validate() — nested groups
 // ============================================================
 
@@ -233,15 +310,14 @@ TEST(ConfigGroupPrint, NamelessGroupDoesNotPrintExtraHeader) {
     EXPECT_NE(out.find("y"), std::string::npos);
 }
 
-TEST(ConfigGroupPrint, BaseLevelAddsTrailingNewlines) {
+TEST(ConfigGroupPrint, PrintEndsWithExactlyOneNewline) {
     th::NamedPairGroup g;
     auto               node = YAML::Load("pair:\n  x: 1\n  y: 2");
     g.parse(node);
     std::ostringstream os;
-    g.printTo(os, "");  // empty indent = base level
+    g.printTo(os, "");  // empty indent = base level, must not inject blank lines
     std::string out = os.str();
-    EXPECT_TRUE(out.size() >= 2u);
-    EXPECT_EQ(out.substr(out.size() - 2), "\n\n");
+    EXPECT_EQ(out, "pair:\n  x: 1\n  y: 2\n");
 }
 
 TEST(ConfigGroupPrint, NestedGroupIndentsContents) {
@@ -267,18 +343,6 @@ TEST(ConfigGroupPrint, DefaultAndParsedTagsAppear) {
     EXPECT_NE(out.find("(default)"), std::string::npos);
     EXPECT_EQ(out.find("<missing>"), std::string::npos);
 }
-
-// ============================================================
-//  id-must-be-first assert (debug only)
-// ============================================================
-
-#ifndef NDEBUG
-TEST(ConfigGroupDeathTest, IdNotFirstTriggersAssert) {
-    th::BadIdOrderGroup g;
-    auto                node = YAML::Load("other: 1\nid: 2");
-    EXPECT_DEATH(g.parse(node), "id member is required to be first if present");
-}
-#endif
 
 // ============================================================
 //  registerEntries — compile-time constraint (documented here)

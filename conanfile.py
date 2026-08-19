@@ -21,13 +21,13 @@ class CARLRecipe(ConanFile):
         "fPIC": True,
     }
 
-    exports_sources = "CMakeLists.txt", "src/*", "include/*"
+    exports_sources = "CMakeLists.txt", "cmake/*", "src/*", "include/*"
 
     def requirements(self):
         self.requires("yaml-cpp/0.9.0")
         self.requires("fmt/12.1.0")
 
-    def test_requirements(self):
+    def build_requirements(self):
         self.test_requires("gtest/1.14.0")
 
     def config_options(self):

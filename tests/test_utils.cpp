@@ -122,6 +122,32 @@ TEST(ValueSource, DisplayTagParsed) {
     EXPECT_EQ(CARL::ValueSource::parsed().displayTag(), "");
 }
 
+TEST(ValueSource, PatchedIsSetAndPatched) {
+    auto s = CARL::ValueSource::patched();
+    EXPECT_TRUE(s.isSet());
+    EXPECT_TRUE(s.isPatched());
+    EXPECT_FALSE(s.isDefault());
+    EXPECT_FALSE(s.isParsed());
+}
+
+TEST(ValueSource, MarkPatchedTransitionsUnsetToPatched) {
+    auto s = CARL::ValueSource::unset();
+    s.markPatched();
+    EXPECT_TRUE(s.isSet());
+    EXPECT_TRUE(s.isPatched());
+}
+
+TEST(ValueSource, MarkPatchedOverridesParsed) {
+    auto s = CARL::ValueSource::parsed();
+    s.markPatched();
+    EXPECT_TRUE(s.isPatched());
+    EXPECT_FALSE(s.isParsed());
+}
+
+TEST(ValueSource, DisplayTagPatched) {
+    EXPECT_EQ(CARL::ValueSource::patched().displayTag(), "(patched)");
+}
+
 TEST(ValueSource, DefaultConstructorIsUnset) {
     CARL::ValueSource s;
     EXPECT_FALSE(s.isSet());

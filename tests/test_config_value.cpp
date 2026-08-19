@@ -326,7 +326,21 @@ TEST(ConfigValuePatch, OverwritesValue) {
     CARL::ConfigValue<int> cv {"x"};
     cv.patch(123);
     EXPECT_EQ(*cv, 123);
-    EXPECT_FALSE(cv.validate().correct);
+}
+
+TEST(ConfigValuePatch, PatchedRequiredFieldSatisfiesValidation) {
+    CARL::ConfigValue<int> cv {"x"};
+    ASSERT_FALSE(cv.validate().correct);
+    cv.patch(123);
+    EXPECT_TRUE(cv.validate().correct);
+}
+
+TEST(ConfigValuePatch, PatchedValueIsTaggedInPrint) {
+    CARL::ConfigValue<int> cv {"x"};
+    cv.patch(123);
+    std::ostringstream os;
+    cv.printTo(os, "");
+    EXPECT_EQ(os.str(), "x: 123 (patched)\n");
 }
 
 TEST(ConfigValuePatch, CanPatchAfterParse) {
@@ -375,6 +389,29 @@ TEST(ConfigValuePrint, UnsetValueHasMissingTag) {
     cv.printTo(os, "");
     std::string out = os.str();
     EXPECT_NE(out.find("<missing>"), std::string::npos);
+}
+
+TEST(ConfigValuePrint, ParsedValueHasNoTrailingSpace) {
+    CARL::ConfigValue<int> cv {"port"};
+    auto                   node = YAML::Load("port: 8080");
+    cv.parse(node);
+    std::ostringstream os;
+    cv.printTo(os, "");
+    EXPECT_EQ(os.str(), "port: 8080\n");
+}
+
+TEST(ConfigValuePrint, DefaultValueHasSingleSpaceBeforeTag) {
+    CARL::ConfigValue<int> cv {"timeout", CARL::Default<int>(30)};
+    std::ostringstream     os;
+    cv.printTo(os, "");
+    EXPECT_EQ(os.str(), "timeout: 30 (default)\n");
+}
+
+TEST(ConfigValuePrint, UnsetValueHasSingleSpaceBeforeTag) {
+    CARL::ConfigValue<int> cv {"api_key"};
+    std::ostringstream     os;
+    cv.printTo(os, "");
+    EXPECT_EQ(os.str(), "api_key: <missing>\n");
 }
 
 TEST(ConfigValuePrint, IndentIsApplied) {

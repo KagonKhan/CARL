@@ -5,6 +5,8 @@
 #include <random>
 #include <set>
 #include <sstream>
+#include <string>
+#include <vector>
 
 // ============================================================
 //  Full tree — flat group
@@ -84,22 +86,20 @@ TEST(Integration, NestedGroupInnerMissing)
     g.parse(node);
     auto result = g.validate();
     EXPECT_FALSE(result.correct);
-    bool inner_val_error = false;
-    for (auto const& e : result.errors) {
-        if (e.find("inner") != std::string::npos && e.find("val") != std::string::npos)
-            inner_val_error = true;
-    }
-    EXPECT_TRUE(inner_val_error);
+    // The whole inner section is absent, so it reports itself rather than each of its fields
+    ASSERT_EQ(result.errors.size(), 1u);
+    EXPECT_EQ(result.errors[0], "outer.inner: is missing");
 }
 
-TEST(Integration, OuterGroupAbsentGivesMultipleErrors)
+TEST(Integration, OuterGroupAbsentGivesOneError)
 {
     th::OuterGroup g;
     auto node = YAML::Load("unrelated: 1");
     g.parse(node);
     auto result = g.validate();
     EXPECT_FALSE(result.correct);
-    EXPECT_GE(result.errors.size(), 2u);
+    ASSERT_EQ(result.errors.size(), 1u);
+    EXPECT_EQ(result.errors[0], "outer: is missing");
 }
 
 // ============================================================
@@ -133,7 +133,8 @@ entries:
 )");  // id 2 missing label
     map.parse(node);
     auto result = map.validate();
-    EXPECT_FALSE(result.correct);
+    ASSERT_FALSE(result.correct);
+    ASSERT_EQ(result.errors.size(), 1u);
     EXPECT_NE(result.errors[0].find("entries[2]"), std::string::npos);
 }
 
@@ -207,6 +208,84 @@ TEST(Integration, SecondParseWithPartialDataOverwritesOnlyPresentFields)
     g.parse(node2);
     EXPECT_EQ(*g.name, "Alice-Updated");
     EXPECT_EQ(*g.age,  30);  // from first parse, not overwritten
+}
+
+TEST(Integration, MultiFileOverlayAcrossAWholeTree)
+{
+    struct RootConfig : CARL::ConfigGroup
+    {
+        CARL::ConfigValue<int>      version {"version"};
+        th::PersonGroup             person;
+        CARL::ConfigMap<th::IdItem> items {"items", CARL::MapType::ID_LIST};
+
+        RootConfig() { registerEntries(version, person, items); }
+    };
+
+    RootConfig cfg;
+    auto base = YAML::Load(R"(
+version: 1
+person:
+  name: Alice
+  age: 30
+items:
+  - id: 1
+    label: one
+  - id: 2
+    label: two
+)");
+    auto overlay = YAML::Load(R"(
+version: 2
+person:
+  name: Bob
+items:
+  - id: 2
+    label: two_updated
+  - id: 3
+    label: three
+)");
+
+    cfg.parse(base);
+    ASSERT_NO_THROW(cfg.parse(overlay));
+
+    auto result = cfg.validate();
+    EXPECT_TRUE(result.correct) << result.errors[0];
+
+    EXPECT_EQ(*cfg.version,      2);
+    EXPECT_EQ(*cfg.person.name,  "Bob");
+    EXPECT_EQ(*cfg.person.age,   30);  // untouched by the overlay
+    ASSERT_EQ(cfg.items.size(),  3u);
+    EXPECT_EQ(*cfg.items.at(1).label, "one");
+    EXPECT_EQ(*cfg.items.at(2).label, "two_updated");
+    EXPECT_EQ(*cfg.items.at(3).label, "three");
+}
+
+TEST(Integration, ReadingBackAWholeMapAfterValidation)
+{
+    CARL::ConfigMap<th::ModelEntry, std::string> cameras {"cameras"};
+    auto node = YAML::Load(R"(
+cameras:
+  front:
+    zoom: 10
+    display: wide
+  rear:
+    zoom: 30
+)");
+    cameras.parse(node);
+    ASSERT_TRUE(cameras.validate().correct);
+
+    ASSERT_EQ(cameras.size(), 2u);
+    EXPECT_EQ(*cameras.at("front").zoom, 10);
+    EXPECT_EQ(*cameras.at("rear").zoom,  30);
+    EXPECT_TRUE(cameras.contains("front"));
+    EXPECT_EQ(cameras.find("side"), nullptr);
+
+    int total_zoom = 0;
+    for (auto const& [key, entry] : cameras) {
+        EXPECT_FALSE(key.empty());
+        total_zoom += *entry.zoom;
+    }
+
+    EXPECT_EQ(total_zoom, 40);
 }
 
 // ============================================================

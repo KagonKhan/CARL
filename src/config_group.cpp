@@ -1,33 +1,26 @@
 #include "config_group.hpp"
 
-namespace
-{
+#include "utils/exceptions.hpp"
 
-bool containsMember(std::vector<CARL::IConfigValue*> const& vec, std::string const& member_name)
-{
-    return std::any_of(
-        vec.begin(),
-        vec.end(),
-        [&member_name] (CARL::IConfigValue const* entry) { return entry->name() == member_name; }
-    );
-}
-
-} // namespace
-
+#include <string>
 
 namespace CARL
 {
 
 void ConfigGroup::parse(YAML::Node const& node)
 {
-    if (containsMember(entries_, "id")) {
-        assert((entries_.front()->name() == "id") && "id member is required to be first if present");
+    if (!name_.empty() && !isMapOrNull(node)) {
+        throw ParsingError("expected a map node while looking for group '{}'", niceName());
     }
 
     // Allow for parsing nameless groups -> main level or list entry
     YAML::Node entry_node = name_.empty()? node : node[name_];
     if (!entry_node) {
         return;
+    }
+
+    if (!isMapOrNull(entry_node)) {
+        throw ParsingError("expected a map node for group '{}'", niceName());
     }
 
     wasParsed_ = true;
@@ -39,8 +32,8 @@ void ConfigGroup::parse(YAML::Node const& node)
 
 [[nodiscard]] ValidationResult ConfigGroup::validate() const
 {
-    if (!required_ && !wasParsed_) {
-        return ValidationResult::success();
+    if (!wasParsed_) {
+        return required_? ValidationResult::failure("{}: is missing", niceName()) : ValidationResult::success();
     }
 
     ValidationResult result = ValidationResult::success();
@@ -70,13 +63,11 @@ void ConfigGroup::printTo(std::ostream& os, std::string const& indent) const
     for (auto* entry : entries_) {
         entry->printTo(os, sub_indent);
     }
+}
 
-    // WARNING: this might be brittle, if you decide to print the config with an indent it would break.
-    //          I'm not sure it's necessary to work on a "clean" solution right now, as it would require adding members
-    //          to ConfigGroup that signify "isBase" or something like that
-    if (bool is_base_level = indent.empty(); is_base_level) {
-        os << "\n\n";
-    }
+std::string ConfigGroup::niceName() const
+{
+    return name_.empty()? "<nameless group>" : name_;
 }
 
 } // namespace CARL

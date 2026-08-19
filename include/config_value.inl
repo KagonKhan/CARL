@@ -1,5 +1,3 @@
-#include "utils/utils.hpp"
-
 namespace CARL
 {
 
@@ -20,7 +18,7 @@ ConfigValue<T>::ConfigValue(std::string name, Default<T> default_value)
 template <typename T>
 void ConfigValue<T>::parse(YAML::Node const& node)
 {
-    if (!node.IsNull() && !node.IsMap()) {
+    if (!isMapOrNull(node)) {
         throw ParsingError("expected a map node while parsing field '{}'", name_);
     }
 
@@ -54,7 +52,25 @@ void ConfigValue<T>::printTo(std::ostream& os, std::string const& indent) const
         ss << *value_;
     }
 
-    os << indent << fmt::format("{}: {} {}\n", name_, reindent(ss.str(), indent), source_.displayTag());
+    std::string const      body = reindent(ss.str(), indent);
+    std::string_view const tag  = source_.displayTag();
+
+    os << indent << name_ << ':';
+
+    // reindent() returns a leading newline for multi-line values, which already separates them from the key
+    if (!body.empty()) {
+        if (body.front() != '\n') {
+            os << ' ';
+        }
+
+        os << body;
+    }
+
+    if (!tag.empty()) {
+        os << ' ' << tag;
+    }
+
+    os << '\n';
 }
 
 } // namespace CARL

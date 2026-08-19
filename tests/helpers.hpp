@@ -85,15 +85,30 @@ struct ConfigWithDefaults : CARL::ConfigGroup
         : CARL::ConfigGroup("config") { registerEntries(required_field, optional_field, optional_str); }
 };
 
-#ifndef NDEBUG
-// id NOT first — only used in death tests
-struct BadIdOrderGroup : CARL::ConfigGroup
+// id registered last — ID_LIST maps must not care about registration order
+struct IdLastItem : CARL::ConfigGroup
 {
-    CARL::ConfigValue<int> other {"other"};
+    CARL::ConfigValue<std::string> label {"label"};
     CARL::ConfigValue<int> id {"id"};
-    BadIdOrderGroup() { registerEntries(other, id); }
+    IdLastItem() { registerEntries(label, id); }
 };
 
-#endif
+// Required group whose every field has a default — nothing inside can ever report missing
+struct AllDefaultedSection : CARL::ConfigGroup
+{
+    CARL::ConfigValue<int> port {"port", CARL::Default<int>{5432}};
+    CARL::ConfigValue<std::string> host {"host", CARL::Default<std::string>("localhost")};
+    AllDefaultedSection()
+        : CARL::ConfigGroup("database") { registerEntries(port, host); }
+};
+
+// Named group holding a nested group and a nested map — reaches the code paths that index a node by key
+struct GroupWithNested : CARL::ConfigGroup
+{
+    InnerGroup inner;
+    CARL::ConfigMap<IdItem> items {"items", CARL::MapType::ID_LIST, CARL::Required::NO};
+    GroupWithNested()
+        : CARL::ConfigGroup("outer") { registerEntries(inner, items); }
+};
 
 } // namespace th

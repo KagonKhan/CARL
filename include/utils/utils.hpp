@@ -4,6 +4,8 @@
 #include <fmt/core.h>
 
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace CARL
@@ -53,22 +55,25 @@ struct Default
 class ValueSource
 {
 public:
-    enum class Kind { UNSET, DEFAULT, PARSED, };
+    enum class Kind { UNSET, DEFAULT, PARSED, PATCHED, };
 
     static constexpr ValueSource unset() noexcept       { return ValueSource(Kind::UNSET);   }
     static constexpr ValueSource fromDefault() noexcept { return ValueSource(Kind::DEFAULT); }
     static constexpr ValueSource parsed() noexcept      { return ValueSource(Kind::PARSED);  }
+    static constexpr ValueSource patched() noexcept     { return ValueSource(Kind::PATCHED); }
 
 public:
     constexpr ValueSource() noexcept = default;
     constexpr explicit ValueSource(Kind kind) noexcept
         : kind_(kind) {}
 
-    constexpr void markParsed() noexcept { kind_ = Kind::PARSED; }
+    constexpr void markParsed() noexcept  { kind_ = Kind::PARSED;  }
+    constexpr void markPatched() noexcept { kind_ = Kind::PATCHED; }
 
     [[nodiscard]] constexpr bool isSet() const noexcept     { return kind_ != Kind::UNSET;   }
     [[nodiscard]] constexpr bool isDefault() const noexcept { return kind_ == Kind::DEFAULT; }
     [[nodiscard]] constexpr bool isParsed() const noexcept  { return kind_ == Kind::PARSED;  }
+    [[nodiscard]] constexpr bool isPatched() const noexcept { return kind_ == Kind::PATCHED; }
 
     [[nodiscard]] constexpr std::string_view displayTag() const noexcept
     {
@@ -78,6 +83,9 @@ public:
 
         case Kind::DEFAULT:
             return "(default)";
+
+        case Kind::PATCHED:
+            return "(patched)";
 
         case Kind::PARSED:
             return "";

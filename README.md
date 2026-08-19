@@ -47,14 +47,18 @@ cmake --build --preset conan-release
 ctest --preset conan-release
 ```
 
-Or manually:
+`yaml-cpp` and `fmt` are found with `find_package`, so a plain `cmake ..` only works if both are
+already installed where CMake can see them (a system package manager, or your own
+`CMAKE_PREFIX_PATH`). Otherwise use the Conan flow above.
 
 ```bash
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build .
-ctest
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/path/to/deps
+cmake --build build
+ctest --test-dir build
 ```
+
+Tests default to on for a top-level build and off when CARL is pulled in with
+`add_subdirectory`. Force either way with `-DCARL_BUILD_TESTS=ON|OFF`.
 
 ### Dependencies
 
@@ -96,6 +100,10 @@ size_t len    = cfg.name->size();   // operator-> for member access
 ```
 
 Accessing an unset value triggers an assertion in debug builds. Always validate first.
+
+`patch()` sets a value from code rather than from YAML. A patched field counts as set — it satisfies
+`validate()` and prints with a `(patched)` tag — so it is a way to fill a required field the config
+file cannot supply.
 
 ### `ConfigGroup` — a named section
 
@@ -160,7 +168,7 @@ Each YAML entry is a mapping; the `id` field value becomes the map key.
 
 ```cpp
 struct CameraEntry : CARL::ConfigGroup {
-    CARL::ConfigValue<int>         id    {"id"};    // MUST be registered first
+    CARL::ConfigValue<int>         id    {"id"};
     CARL::ConfigValue<std::string> model {"model"};
     CARL::ConfigValue<int>         zoom  {"zoom"};
 
@@ -180,7 +188,8 @@ cameras:
     zoom: 30
 ```
 
-> The `id` field **must be the first registered entry** in an ID_LIST group.
+> The key is read from the YAML `id` field, so the group must declare a matching `id` member for the
+> value to be readable afterwards. Registration order only affects print order.
 
 #### `MapType::STANDARD` — map keyed by YAML key names
 
@@ -196,6 +205,29 @@ cameras:
   rear:
     model: AXIS-Q6135
     zoom: 30
+```
+
+#### Reading the entries
+
+`ConfigMap` reads like a `std::map`, except it hands out `Group&` instead of the owning pointer it
+stores internally.
+
+```cpp
+CameraEntry&       front = cfg.cameras.at(1);        // throws CARL::LookupError if absent
+CameraEntry const* maybe = cfg.cameras.find(2);      // nullptr if absent
+
+if (cfg.cameras.contains(3)) { /* ... */ }
+std::size_t how_many = cfg.cameras.size();
+bool        none     = cfg.cameras.empty();
+```
+
+Iteration yields `std::pair<KeyType const&, Group&>` in key order. It is a proxy pair, so bind it by
+value or by const reference — never by non-const reference:
+
+```cpp
+for (auto const& [id, camera] : cfg.cameras) {
+    std::cout << id << ": " << *camera.model << " @ " << *camera.zoom << "\n";
+}
 ```
 
 ---
@@ -218,7 +250,21 @@ if (!result.correct) {
 }
 ```
 
-Unknown YAML fields are silently ignored. Missing required fields produce entries in `ValidationResult::errors` with fully-qualified names (`cameras[1].model: is missing`).
+Later parses overlay earlier ones all the way down the tree. For a `ConfigMap` that means an entry
+whose key already exists is merged into rather than replaced, so a second file can override single
+fields of an existing entry and introduce new entries at the same time. Duplicate keys are rejected
+**within one document**, not across files.
+
+Unknown YAML fields are silently ignored. Missing required fields produce entries in
+`ValidationResult::errors` with fully-qualified names (`cameras[1].model: is missing`).
+
+A required group or map that is absent altogether reports itself once rather than reporting each of
+its fields:
+
+```
+database: is missing
+'cameras' is required and missing
+```
 
 ---
 
@@ -321,7 +367,13 @@ static_assert(CARL::is_carl_parseable<Color>, "Color needs YAML::convert<> and o
 | Situation | Behaviour |
 |-----------|-----------|
 | YAML is structurally wrong (sequence where map expected) | throws `CARL::ParsingError` |
+| Scalar where a group or map was expected (`server: hello`) | throws `CARL::ParsingError` |
 | Field type mismatch (`x: notanumber` for `ConfigValue<int>`) | throws `CARL::ParsingError` |
 | Required field absent | `validate()` returns failure with field name in errors |
-| Duplicate `id` in `ID_LIST` map | throws `CARL::ParsingError` |
+| Required group or map absent | `validate()` returns one failure naming the section |
+| Duplicate `id` within one `ID_LIST` document | throws `CARL::ParsingError` |
+| `ConfigMap::at()` with an unknown key | throws `CARL::LookupError` |
 | Accessing unset value | `assert` in debug builds; always validate before accessing |
+
+Every exception CARL throws derives from `CARL::FormattedException`, and therefore from
+`std::runtime_error`. `parse()` does not let raw `YAML::Exception` escape.
