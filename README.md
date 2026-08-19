@@ -362,6 +362,65 @@ static_assert(CARL::is_carl_parseable<Color>, "Color needs YAML::convert<> and o
 
 ---
 
+## Generating a model from YAML
+
+`tools/carl_generate.py` turns one complete config file into a CARL model. It needs Python 3 and
+PyYAML.
+
+```bash
+python3 tools/carl_generate.py config.yaml -o include/generated -n myapp -r AppConfig -b myapp
+```
+
+It writes `<basename>_config.hpp` (the tree of `ConfigGroup`, `ConfigMap` and `ConfigValue`) and
+`<basename>_extensions.hpp` (plain types for shapes CARL has no group for, with their
+`YAML::convert` and `operator<<`).
+
+Structure comes from the YAML itself:
+
+| YAML | Generated |
+|------|-----------|
+| mapping of scalars | `ConfigGroup` with one `ConfigValue` per key |
+| mapping whose values are similar mappings | `ConfigMap<Entry, KeyType>`, `MapType::STANDARD` |
+| sequence of mappings that all have `id` | `ConfigMap<Entry>`, `MapType::ID_LIST` |
+| sequence of mappings without `id` | generated struct + `ConfigValue<std::vector<Struct>>` |
+| sequence of scalars or of sequences | generated wrapper struct |
+
+Scalar types widen: a key seen as a float becomes `double`, integers become `int`, `true`/`false`
+becomes `bool`, anything else stays `std::string`.
+
+### Annotations
+
+One file cannot show which keys are optional, so declare it inline. Directives are written with a
+leading `!` and are read from a trailing comment on the key's line, or from a standalone comment line
+directly above it — prose comments are never mistaken for directives.
+
+```yaml
+video:
+  hw: cpu              # !default    -> Default<std::string>{"cpu"}
+  maxEncoders: 8       # !optional   -> Required::NO
+bladeRecognizer:       # !optional   -> optional group
+cameras:               # !map        -> force a keyed ConfigMap
+recognizers:           # !group      -> force a group of nested groups
+stations:              # !list       -> keep a sequence out of ID_LIST mode
+```
+
+A YAML tag names the C++ type directly. Tags naming your own type require you to supply
+`YAML::convert<T>` and `operator<<`; the generated header `static_assert`s on
+`is_carl_parseable<T>` so a missing one is a readable compile error. Pass `--tag-include` to have
+your header included above that assert.
+
+```yaml
+        transformationMatrix: !cv::Mat   # ConfigValue<cv::Mat>, you provide convert + operator<<
+        radius: !double 2                # a builtin tag is just a type override
+```
+
+Within a `ConfigMap`, keys present in only some entries are inferred optional automatically. The
+generator prints a note for every such inference, and for every shape it had to push into a
+generated struct — those lose per-field validation, so a bad value reports against the whole field
+rather than the exact path.
+
+---
+
 ## Error handling
 
 | Situation | Behaviour |
