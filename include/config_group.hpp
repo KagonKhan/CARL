@@ -18,6 +18,7 @@ public:
     [[nodiscard]] ValidationResult validate() const override;
     void                           printTo(std::ostream& os, std::string const& indent = "") const override;
     [[nodiscard]] std::string_view name() const noexcept override { return name_; }
+    [[nodiscard]] bool             wasPatched() const noexcept override;
 
 protected:
     explicit ConfigGroup(std::string name = "", Required required = Required::YES)

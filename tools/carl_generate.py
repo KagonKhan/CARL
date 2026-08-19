@@ -28,6 +28,20 @@ BOOL_STR = {'true', 'false'}
 
 DIRECTIVES = {'optional', 'default', 'group', 'map', 'list'}
 
+# stands in for a type name that is claimed but has no shape of its own, see Builder.build_root
+RESERVED = object()
+
+# a YAML key may be anything, a member name may not
+CPP_KEYWORDS = frozenset('''
+alignas alignof and and_eq asm auto bitand bitor bool break case catch char char8_t char16_t char32_t
+class compl concept const consteval constexpr constinit const_cast continue co_await co_return
+co_yield decltype default delete do double dynamic_cast else enum explicit export extern false float
+for friend goto if inline int long mutable namespace new noexcept not not_eq nullptr operator or
+or_eq private protected public register reinterpret_cast requires return short signed sizeof static
+static_assert static_cast struct switch template this thread_local throw true try typedef typeid
+typename union unsigned using virtual void volatile wchar_t while xor xor_eq
+'''.split())
+
 # yaml-cpp and the standard library already satisfy CARL for these, so a !tag naming one is a plain
 # type override and needs no static_assert or user-supplied convert
 BUILTIN_TYPES = {
@@ -83,8 +97,19 @@ def directives_for(key_node, table):
 # --------------------------------------------------------------------------- naming
 
 def pascal(name):
-    parts = re.split(r'[_\-]', name)
-    return ''.join(p[:1].upper() + p[1:] for p in parts if p)
+    parts = re.split(r'[^0-9A-Za-z]+', name)
+    out = ''.join(p[:1].upper() + p[1:] for p in parts if p)
+    if not out:
+        return 'Unnamed'
+    return out if out[0].isalpha() else '_' + out
+
+
+def identifier(name):
+    """a usable C++ member name for a YAML key; the quoted key itself stays untouched"""
+    out = re.sub(r'[^0-9A-Za-z_]+', '_', name)
+    if not out or out[0].isdigit():
+        out = '_' + out
+    return out + '_' if out in CPP_KEYWORDS else out
 
 
 def singular(name):
@@ -120,10 +145,10 @@ def cpp_literal(cpp_type, raw):
 # --------------------------------------------------------------------------- IR
 
 class Field:
-    """a ConfigValue<T> member"""
+    """a ConfigValue<T> member. key is the YAML key, member the C++ name standing for it"""
 
     def __init__(self, key, cpp_type, required=True, default=None, tagged=False):
-        self.key, self.cpp_type = key, cpp_type
+        self.key, self.member, self.cpp_type = key, key, cpp_type
         self.required, self.default, self.tagged = required, default, tagged
 
 
@@ -131,7 +156,7 @@ class Group:
     """a ConfigGroup: a named section, or a nameless map entry / root"""
 
     def __init__(self, key, type_name, children, required=True, named=True):
-        self.key, self.type_name, self.children = key, type_name, children
+        self.key, self.member, self.type_name, self.children = key, key, type_name, children
         self.required, self.named = required, named
 
 
@@ -139,16 +164,30 @@ class Map:
     """a ConfigMap<Entry, Key>"""
 
     def __init__(self, key, entry, key_type, mode, required=True):
-        self.key, self.entry, self.key_type, self.mode = key, entry, key_type, mode
-        self.required = required
+        self.key, self.member, self.entry = key, key, entry
+        self.key_type, self.mode, self.required = key_type, mode, required
 
 
 class Struct:
-    """a plain struct emitted into the extensions header, with convert + operator<<"""
+    """a plain struct emitted into the extensions header, with convert + operator<<
+
+    members are (C++ member name, YAML key, C++ type) triples
+    """
 
     def __init__(self, name, members, kind, item_type=None):
         self.name, self.members, self.kind = name, members, kind
         self.item_type = item_type
+
+
+def shape_signature(node):
+    """what makes two generated types interchangeable: the shape, never the values behind it"""
+    if isinstance(node, Field):
+        return ('field', node.key, node.member, node.cpp_type, node.required, node.default)
+    if isinstance(node, Map):
+        return ('map', node.key, node.member, node.key_type, node.mode, node.required,
+                shape_signature(node.entry))
+    return ('group', node.key, node.member, node.named, node.required,
+            tuple(shape_signature(c) for c in node.children))
 
 
 # --------------------------------------------------------------------------- YAML node helpers
@@ -189,16 +228,23 @@ def looks_like_keyed_map(node):
 
 
 def merged_entry_keys(nodes):
-    """union of keys across sibling mappings, first-seen order, remembering which are universal"""
-    order, seen_in = [], {}
+    """union of keys across sibling mappings, first-seen order, keeping every value node seen for a key
+
+    Every value matters: the C++ type of a key has to cover all of them, not just the first one.
+    """
+    order, values, in_how_many = [], {}, {}
     for n in nodes:
+        seen_here = set()
         for k, v in n.value:
-            if k.value not in seen_in:
-                order.append((k, v))
-                seen_in[k.value] = 0
-            seen_in[k.value] += 1
-    universal = {k: c == len(nodes) for k, c in seen_in.items()}
-    return order, universal
+            if k.value not in values:
+                order.append(k)
+                values[k.value], in_how_many[k.value] = [], 0
+            values[k.value].append(v)
+            if k.value not in seen_here:
+                seen_here.add(k.value)
+                in_how_many[k.value] += 1
+    universal = {k: c == len(nodes) for k, c in in_how_many.items()}
+    return [(k, values[k.value]) for k in order], universal
 
 
 # --------------------------------------------------------------------------- builder
@@ -209,26 +255,31 @@ class Builder:
         self.root_name = root_name
         self.structs = []          # generated plain structs, in dependency order
         self.tagged_types = []     # types named by !tags, which the user must provide
+        self.type_shapes = {}      # generated type name -> the shape it stands for
         self.notes = []
 
     # -- entry points ------------------------------------------------------
 
     def build_root(self, node):
-        children = [self.child(k, v) for k, v in node.value]
+        # the root type is named on the command line and keeps that name, so no child may claim it
+        self.type_shapes[self.root_name] = RESERVED
+        children = self.merged_children(self.root_name, [node], self.root_name)
         return Group('', self.root_name, children, named=False)
 
-    def child(self, key_node, value_node):
-        key = key_node.value
-        flags = directives_for(key_node, self.directives)
-        required = 'optional' not in flags and 'default' not in flags
-        tag = explicit_tag(value_node)
+    def child(self, key_node, value_nodes, optional=False):
+        """one member, from every value node its key was seen with across sibling mappings"""
+        key      = key_node.value
+        flags    = directives_for(key_node, self.directives)
+        required = not optional and 'optional' not in flags and 'default' not in flags
+        primary  = value_nodes[0]
+        tag      = explicit_tag(primary)
 
         if tag:
             if tag in BUILTIN_TYPES:
                 # plain type override, e.g. radius: !double 2
                 default = None
-                if 'default' in flags and is_scalar(value_node):
-                    default = cpp_literal(tag, value_node.value)
+                if 'default' in flags and is_scalar(primary):
+                    default = cpp_literal(tag, primary.value)
                 return Field(key, tag, required, default)
 
             self.tagged_types.append(tag)
@@ -236,39 +287,45 @@ class Builder:
                 self.notes.append("%s: !default ignored, %s is a user supplied type" % (key, tag))
             return Field(key, tag, required, None, tagged=True)
 
-        if is_scalar(value_node):
-            cpp = scalar_cpp_type([value_node.value])
-            default = cpp_literal(cpp, value_node.value) if 'default' in flags else None
+        if is_scalar(primary):
+            scalars = [v.value for v in value_nodes if is_scalar(v)]
+            if len(scalars) != len(value_nodes):
+                self.notes.append('%s: not a scalar everywhere, type inferred from the scalar ones' % key)
+            cpp     = scalar_cpp_type(scalars)
+            default = cpp_literal(cpp, primary.value) if 'default' in flags else None
             return Field(key, cpp, required, default)
 
-        if is_map(value_node):
-            if 'group' not in flags and ('map' in flags or looks_like_keyed_map(value_node)):
-                return self.keyed_map(key, value_node, required)
-            return self.group(key, value_node, required)
+        if is_map(primary):
+            maps = [v for v in value_nodes if is_map(v)]
+            if 'group' not in flags and ('map' in flags or any(looks_like_keyed_map(v) for v in maps)):
+                return self.keyed_map(key, maps, required)
+            return self.group(key, maps, required)
 
-        if is_seq(value_node):
-            return self.sequence(key, value_node, required, flags)
+        if is_seq(primary):
+            return self.sequence(key, value_nodes, required, flags)
 
         raise SystemExit('unsupported node for key %r' % key)
 
     # -- shapes ------------------------------------------------------------
 
-    def group(self, key, node, required):
-        children = [self.child(k, v) for k, v in node.value]
-        return Group(key, pascal(key) + 'Config', children, required)
+    def group(self, key, nodes, required, named=True, type_base=None):
+        base     = type_base or pascal(key) + 'Config'
+        children = self.merged_children(key or self.root_name, nodes, base)
+        shape    = ('group', key, named, required, tuple(shape_signature(c) for c in children))
+        return Group(key, self.type_name(base, shape), children, required, named)
 
-    def keyed_map(self, key, node, required):
-        entries = [v for _, v in node.value]
-        keys = map_keys(node)
-        key_type = 'int' if all(INT_RE.match(k) for k in keys) else 'std::string'
-        entry = self.entry_group(key, entries)
+    def keyed_map(self, key, nodes, required):
+        entry_nodes = [v for n in nodes for _, v in n.value]
+        keys        = [k for n in nodes for k in map_keys(n)]
+        key_type    = 'int' if all(INT_RE.match(k) for k in keys) else 'std::string'
+        entry       = self.entry_group(key, [v for v in entry_nodes if is_map(v)])
         return Map(key, entry, key_type, 'STANDARD', required)
 
-    def sequence(self, key, node, required, flags):
-        items = node.value
+    def sequence(self, key, nodes, required, flags):
+        items = [i for n in nodes if is_seq(n) for i in n.value]
         if items and all(is_map(i) for i in items):
             if 'list' not in flags and all('id' in map_keys(i) for i in items):
-                entry = self.entry_group(key, items)
+                entry    = self.entry_group(key, items)
                 key_type = self.id_key_type(items)
                 return Map(key, entry, key_type, 'ID_LIST', required)
 
@@ -293,44 +350,94 @@ class Builder:
 
     def entry_group(self, key, entry_nodes):
         """the nameless ConfigGroup used as a ConfigMap entry, from the union of sibling keys"""
-        order, universal = merged_entry_keys(entry_nodes)
+        return self.group(key, entry_nodes, True, named=False,
+                          type_base=pascal(singular(key)) + 'Entry')
+
+    # -- names -------------------------------------------------------------
+
+    def type_name(self, base, shape):
+        """one generated type per distinct shape: identical shapes share a name, different ones never do"""
+        candidate, suffix = base, 1
+        while True:
+            known = self.type_shapes.get(candidate)
+            if known is None:
+                self.type_shapes[candidate] = shape
+                if candidate != base:
+                    self.notes.append('%s: name already stands for another shape, generated %s'
+                                      % (base, candidate))
+                return candidate
+            if known == shape:
+                return candidate
+            suffix += 1
+            candidate = '%s%d' % (base, suffix)
+
+    def member_names(self, keys, where, reserved):
+        """C++ member names for YAML keys: usable as identifiers, and unique within one type"""
+        names, used = [], {reserved}
+        for key in keys:
+            name = identifier(key)
+            if name in used:
+                suffix = 2
+                while '%s%d' % (name, suffix) in used:
+                    suffix += 1
+                name = '%s%d' % (name, suffix)
+            if name != key:
+                self.notes.append('%s.%s: not usable as a C++ member name, named %s' % (where, key, name))
+            used.add(name)
+            names.append(name)
+        return names
+
+    def merged_children(self, where, nodes, reserved):
+        """the members of a group, merged across sibling mappings, with their C++ names assigned"""
+        order, universal = merged_entry_keys(nodes)
         children = []
-        for k, v in order:
-            field = self.child(k, v)
-            if not universal[k.value]:
-                field.required = False
-                self.notes.append('%s.%s: absent from some entries, marked optional' % (key, k.value))
-            children.append(field)
-        return Group(key, pascal(singular(key)) + 'Entry', children, named=False)
+        for k, values in order:
+            optional = not universal[k.value]
+            if optional:
+                self.notes.append('%s.%s: absent from some entries, marked optional' % (where, k.value))
+            children.append(self.child(k, values, optional))
+
+        for child, member in zip(children, self.member_names([c.key for c in children], where, reserved)):
+            child.member = member
+        return children
 
     # -- generated structs -------------------------------------------------
 
     def struct_from_maps(self, key, items):
-        name = pascal(singular(key))
+        base             = pascal(singular(key))
         order, universal = merged_entry_keys(items)
-        members = []
-        for k, v in order:
-            tag = explicit_tag(v)
+        members          = []
+        for k, values in order:
+            primary = values[0]
+            tag     = explicit_tag(primary)
             if tag:
                 if tag not in BUILTIN_TYPES:
                     self.tagged_types.append(tag)
                 members.append((k.value, tag))
-            elif is_scalar(v):
-                members.append((k.value, scalar_cpp_type([v.value])))
-            elif is_seq(v) and v.value and all(is_map(i) for i in v.value):
-                members.append((k.value, 'std::vector<%s>' % self.struct_from_maps(k.value, v.value)))
-            elif is_seq(v):
-                members.append((k.value, self.vector_type(v.value)))
-            elif is_map(v):
-                members.append((k.value, self.struct_from_maps(k.value, [v])))
+            elif is_scalar(primary):
+                members.append((k.value, scalar_cpp_type([v.value for v in values if is_scalar(v)])))
+            elif is_seq(primary):
+                inner = [i for v in values if is_seq(v) for i in v.value]
+                if inner and all(is_map(i) for i in inner):
+                    members.append((k.value, 'std::vector<%s>' % self.struct_from_maps(k.value, inner)))
+                else:
+                    members.append((k.value, self.vector_type(inner)))
+            elif is_map(primary):
+                members.append((k.value, self.struct_from_maps(k.value, [v for v in values if is_map(v)])))
             if not universal[k.value]:
                 self.notes.append('%s.%s: absent from some items of the sequence' % (key, k.value))
-        self.structs.append(Struct(name, members, 'map'))
+
+        named = list(zip(self.member_names([m for m, _ in members], key, base),
+                         [m for m, _ in members],
+                         [t for _, t in members]))
+        name = self.type_name(base, ('struct', 'map', tuple(named)))
+        self.structs.append(Struct(name, named, 'map'))
         return name
 
     def struct_from_scalar_seq(self, key, items):
-        name = pascal(key)
-        self.structs.append(Struct(name, [('items', self.vector_type(items))], 'seq'))
+        members = [('items', 'items', self.vector_type(items))]
+        name    = self.type_name(pascal(key), ('struct', 'seq', tuple(members)))
+        self.structs.append(Struct(name, members, 'seq'))
         return name
 
     def vector_type(self, items):
@@ -378,13 +485,14 @@ class Emitter:
         return '\n'.join(out)
 
     def collect(self, group, out):
-        """post-order, so every type is defined before it is used"""
+        """post-order, so every type is defined before it is used, and once per type name"""
         for child in group.children:
             if isinstance(child, Group):
                 self.collect(child, out)
             elif isinstance(child, Map):
                 self.collect(child.entry, out)
-        out.append(group)
+        if all(seen.type_name != group.type_name for seen in out):
+            out.append(group)
 
     def group_struct(self, group):
         lines = ['struct %s : ConfigGroup' % group.type_name, '{']
@@ -394,23 +502,29 @@ class Emitter:
             if isinstance(child, Field):
                 rows.append(('ConfigValue<%s>' % child.cpp_type, self.field_init(child)))
             elif isinstance(child, Group):
-                rows.append((child.type_name, '%s;' % child.key))
+                rows.append((child.type_name, '%s;' % child.member))
             elif isinstance(child, Map):
                 rows.append((self.map_type(child), self.map_init(child)))
         lines += ['    ' + r for r in align(rows)]
+        if rows:
+            lines += ['']
 
-        names = [c.key for c in group.children]
-        lines += ['']
         ctor = '    %s()' % group.type_name
         if group.named:
             lines += [ctor, '        : ConfigGroup("%s"%s)' % (
                 group.key, '' if group.required else ', Required::NO')]
-            lines += ['    {', '        registerEntries(']
         else:
-            lines += [ctor, '    {', '        registerEntries(']
-        lines += ['            %s,' % n for n in names[:-1]]
-        lines += ['            %s' % names[-1]]
-        lines += ['        );', '    }']
+            lines += [ctor]
+
+        names = [c.member for c in group.children]
+        if names:
+            lines += ['    {', '        registerEntries(']
+            lines += ['            %s,' % n for n in names[:-1]]
+            lines += ['            %s' % names[-1]]
+            lines += ['        );', '    }']
+        else:
+            # an empty mapping in the source YAML: a group with nothing to register
+            lines += ['    {}']
         lines += ['};']
         return lines
 
@@ -420,7 +534,7 @@ class Emitter:
             extra = ', Default<%s>{%s}' % (field.cpp_type, field.default)
         elif not field.required:
             extra = ', Required::NO'
-        return '%s {"%s"%s};' % (field.key, field.key, extra)
+        return '%s {"%s"%s};' % (field.member, field.key, extra)
 
     def map_type(self, node):
         if node.key_type == 'int':
@@ -435,7 +549,7 @@ class Emitter:
             if node.mode != 'ID_LIST':
                 args.append('MapType::STANDARD')
             args.append('Required::NO')
-        return '%s {%s};' % (node.key, ', '.join(args))
+        return '%s {%s};' % (node.member, ', '.join(args))
 
     # -- extensions header -------------------------------------------------
 
@@ -461,7 +575,7 @@ class Emitter:
             out += ['// Shapes CARL has no group for: bare sequences of mappings, and sequences of',
                     '// sequences. Generated as plain types with a convert and a stream operator.', '']
             for struct in self.ordered_structs(builder.structs):
-                rows = [(m_type, '%s {};' % m_name) for m_name, m_type in struct.members]
+                rows = [(m_type, '%s {};' % member) for member, _, m_type in struct.members]
                 out += ['struct %s' % struct.name, '{']
                 out += ['    ' + r for r in align(rows)]
                 out += ['};', '']
@@ -526,13 +640,12 @@ class Emitter:
         lines = ['inline std::ostream& operator <<(std::ostream& os, %s const& value)' % struct.name,
                  '{']
         parts = []
-        for i, (name, m_type) in enumerate(struct.members):
-            sep = '' if i == 0 else '", "'
-            lead = (', ' if sep else '') + '%s: ' % name
+        for i, (member, key, m_type) in enumerate(struct.members):
+            lead = ('' if i == 0 else ', ') + '%s: ' % key
             if m_type.startswith('std::vector'):
-                parts.append('    os << "%s[" << value.%s << "]";' % (lead, name))
+                parts.append('    os << "%s[" << value.%s << "]";' % (lead, member))
             else:
-                parts.append('    os << "%s" << value.%s;' % (lead, name))
+                parts.append('    os << "%s" << value.%s;' % (lead, member))
         lines += parts
         lines += ['    return os;', '}']
         return lines
@@ -556,9 +669,9 @@ class Emitter:
                       '            return false;',
                       '        }',
                       '']
-            for name, _ in struct.members:
-                lines += ['        if (auto field = node["%s"]) {' % name,
-                          '            out.%s = field.as<decltype(out.%s)>();' % (name, name),
+            for member, key, _ in struct.members:
+                lines += ['        if (auto field = node["%s"]) {' % key,
+                          '            out.%s = field.as<decltype(out.%s)>();' % (member, member),
                           '        }',
                           '']
             lines += ['        return true;']

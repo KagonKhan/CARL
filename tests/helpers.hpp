@@ -103,6 +103,14 @@ struct AllDefaultedSection : CARL::ConfigGroup
         : CARL::ConfigGroup("database") { registerEntries(port, host); }
 };
 
+// Required named group whose single field can only come from code
+struct SecretSection : CARL::ConfigGroup
+{
+    CARL::ConfigValue<std::string> password {"password"};
+    SecretSection()
+        : CARL::ConfigGroup("database") { registerEntries(password); }
+};
+
 // Named group holding a nested group and a nested map — reaches the code paths that index a node by key
 struct GroupWithNested : CARL::ConfigGroup
 {

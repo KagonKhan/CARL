@@ -9,8 +9,14 @@ void ConfigMap<Group, KeyType>::parse(YAML::Node const& node)
     }
 
     // Allow for same-level maps (e.g., global entries without a wrapping name)
-    YAML::Node map_node = name_.empty()? node : node[name_];
+    YAML::Node const map_node = name_.empty()? node : node[name_];
     if (!map_node.IsDefined()) {
+        return;
+    }
+
+    // a declared but empty section reads as a null node, the same way ConfigGroup treats it
+    if (map_node.IsNull()) {
+        wasParsed_ = true;
         return;
     }
 
@@ -26,27 +32,31 @@ void ConfigMap<Group, KeyType>::parse(YAML::Node const& node)
     std::set<KeyType> seen_in_this_pass;
 
     for (auto const& entry : map_node) {
-        // resolve map/list traversal duality
-        YAML::Node value = (mapType_ == MapType::ID_LIST)? YAML::Node(entry) : entry.second;
+        // resolve map/list traversal duality. Const, so a missing id is looked up instead of placeheld.
+        YAML::Node const value = (mapType_ == MapType::ID_LIST)? YAML::Node(entry) : entry.second;
 
         if (!value.IsMap()) {
             throw ParsingError("each entry in '{}' must be a map type", this->niceName());
         }
 
         // read the id from the entry itself, only safe once the entry is known to be a map
-        YAML::Node key = (mapType_ == MapType::ID_LIST)? value["id"] : entry.first;
-        KeyType    id  = parseKey(key);
+        YAML::Node const key = (mapType_ == MapType::ID_LIST)? value["id"] : entry.first;
+        KeyType          id  = parseKey(key);
 
         if (!seen_in_this_pass.insert(id).second) {
             throw ParsingError("duplicate id '{}' in '{}'", id, this->niceName());
         }
 
         auto existing = entries_.find(id);
-        if (existing == entries_.end()) {
-            existing = entries_.emplace(std::move(id), std::make_unique<Group>()).first;
+        if (existing != entries_.end()) {
+            existing->second->parse(value);
+            continue;
         }
 
-        existing->second->parse(value);
+        // parse before storing, so an entry that throws leaves no half-built one behind
+        auto fresh = std::make_unique<Group>();
+        fresh->parse(value);
+        entries_.emplace(std::move(id), std::move(fresh));
     }
 
     wasParsed_ = true;
@@ -66,30 +76,23 @@ KeyType ConfigMap<Group, KeyType>::parseKey(YAML::Node const& key_node) const
 template <typename Group, typename KeyType>
 Group& ConfigMap<Group, KeyType>::at(KeyType const& key)
 {
-    auto entry = entries_.find(key);
-    if (entry == entries_.end()) {
-        throw LookupError("'{}' has no entry '{}'", this->niceName(), key);
-    }
-
-    return *entry->second;
+    return const_cast<Group&>(static_cast<ConfigMap const&>(*this).at(key));
 }
 
 template <typename Group, typename KeyType>
 Group const& ConfigMap<Group, KeyType>::at(KeyType const& key) const
 {
-    auto entry = entries_.find(key);
-    if (entry == entries_.end()) {
-        throw LookupError("'{}' has no entry '{}'", this->niceName(), key);
+    if (Group const* entry = find(key)) {
+        return *entry;
     }
 
-    return *entry->second;
+    throw LookupError("'{}' has no entry '{}'", this->niceName(), key);
 }
 
 template <typename Group, typename KeyType>
 Group* ConfigMap<Group, KeyType>::find(KeyType const& key)
 {
-    auto entry = entries_.find(key);
-    return (entry == entries_.end())? nullptr : entry->second.get();
+    return const_cast<Group*>(static_cast<ConfigMap const&>(*this).find(key));
 }
 
 template <typename Group, typename KeyType>
@@ -100,14 +103,24 @@ Group const* ConfigMap<Group, KeyType>::find(KeyType const& key) const
 }
 
 template <typename Group, typename KeyType>
+bool ConfigMap<Group, KeyType>::wasPatched() const noexcept
+{
+    return std::any_of(
+        entries_.begin(),
+        entries_.end(),
+        [] (auto const& entry) { return entry.second->wasPatched(); }
+    );
+}
+
+template <typename Group, typename KeyType>
 ValidationResult ConfigMap<Group, KeyType>::validate() const
 {
     if (isRequired_ && !wasParsed_) {
-        return ValidationResult::failure("'{}' is required and missing", this->niceName());
+        return ValidationResult::failure("{}: is missing", this->niceName());
     }
 
     if (isRequired_ && entries_.empty()) {
-        return ValidationResult::failure("'{}' is required and empty", this->niceName());
+        return ValidationResult::failure("{}: is empty", this->niceName());
     }
 
     ValidationResult result = ValidationResult::success();
@@ -131,29 +144,32 @@ void ConfigMap<Group, KeyType>::printTo(std::ostream& os, std::string const& ind
         os << indent << name_ << ":\n";
     }
 
-    std::string sub_indent = indent + std::string(name_.empty()? 0 : 2, ' ');
     if (mapType_ == MapType::STANDARD) {
+        std::string const sub_indent = indent + std::string(name_.empty()? 0 : 2, ' ');
         for (auto const& [id, group] : entries_) {
             os << sub_indent << id << ":\n";
             group->printTo(os, sub_indent + "  ");
         }
+
+        return;
     }
-    else {
-        // workaround for prettier printing: hoist the first rendered line onto the "- " bullet
-        for (auto const& [_, group] : entries_) {
-            std::ostringstream temp;
-            group->printTo(temp, sub_indent);
-            std::string group_str = temp.str();
 
-            auto        newline    = group_str.find('\n');
-            std::string first_line = group_str.substr(0, newline);
-            std::string rest       = (newline != std::string::npos)? group_str.substr(newline + 1) : "";
+    // workaround for prettier printing: hoist the first rendered line onto the "- " bullet. The bullet occupies the
+    // first two columns of the entry, so the body of every entry sits two deeper than the bullet, named or not.
+    std::string const sub_indent = indent + "  ";
+    for (auto const& [_, group] : entries_) {
+        std::ostringstream temp;
+        group->printTo(temp, sub_indent);
+        std::string group_str = temp.str();
 
-            auto non_space = first_line.find_first_not_of(' ');
-            first_line = (non_space == std::string::npos)? "" : first_line.substr(non_space);
+        auto        newline    = group_str.find('\n');
+        std::string first_line = group_str.substr(0, newline);
+        std::string rest       = (newline != std::string::npos)? group_str.substr(newline + 1) : "";
 
-            os << indent << "- " << first_line << '\n' << rest;
-        }
+        auto non_space = first_line.find_first_not_of(' ');
+        first_line = (non_space == std::string::npos)? "" : first_line.substr(non_space);
+
+        os << indent << "- " << first_line << '\n' << rest;
     }
 }
 

@@ -2,10 +2,12 @@
 #define CARL_CONFIG_MAP_HPP
 
 #include "iconfig_value.hpp"
+#include "utils/constraints.hpp"
 #include "utils/exceptions.hpp"
 
 #include <fmt/format.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -34,12 +36,16 @@ class ConfigMap : public IConfigValue
     class Iterator
     {
     public:
-        using iterator_category = std::forward_iterator_tag;
+        // dereferencing yields a proxy pair rather than a value_type&, which rules out a C++17 ForwardIterator.
+        // Iteration is multi-pass all the same, and that is what iterator_concept reports to C++20 algorithms.
+        using iterator_category = std::input_iterator_tag;
+        using iterator_concept  = std::forward_iterator_tag;
         using value_type        = std::pair<KeyType const&, GroupType&>;
         using difference_type   = std::ptrdiff_t;
         using reference         = value_type;
         using pointer           = void;
 
+        Iterator() = default;
         explicit Iterator(StorageIterator it)
             : it_(it) {}
 
@@ -48,11 +54,18 @@ class ConfigMap : public IConfigValue
         Iterator& operator ++()    { ++it_; return *this; }
         Iterator  operator ++(int) { Iterator previous {*this}; ++it_; return previous; }
 
-        bool operator ==(Iterator const& other) const { return it_ == other.it_; }
-        bool operator !=(Iterator const& other) const { return it_ != other.it_; }
+        // templated so an iterator and a const_iterator compare against each other, e.g. begin() == cend()
+        template <typename OtherIterator, typename OtherGroup>
+        bool operator ==(Iterator<OtherIterator, OtherGroup> const& other) const { return it_ == other.it_; }
+
+        template <typename OtherIterator, typename OtherGroup>
+        bool operator !=(Iterator<OtherIterator, OtherGroup> const& other) const { return !(*this == other); }
 
     private:
-        StorageIterator it_;
+        template <typename, typename>
+        friend class Iterator;
+
+        StorageIterator it_ {};
     };
 
 
@@ -60,7 +73,11 @@ public:
     static_assert(std::is_default_constructible_v<Group>, "ConfigMap<Group>: Group must be default-constructible");
     static_assert(
         fmt::is_formattable<KeyType>::value,
-        "ConfigMap<Group, KeyType>: KeyType must be formattable by fmt, it appears in keys and error messages"
+        "ConfigMap<Group, KeyType>: KeyType must be formattable by fmt, it appears in error messages"
+    );
+    static_assert(
+        is_printable<KeyType>::value,
+        "ConfigMap<Group, KeyType>: KeyType must support operator<<(ostream), printTo() streams the keys"
     );
 
     using key_type       = KeyType;
@@ -79,6 +96,7 @@ public:
     [[nodiscard]] ValidationResult validate() const override;
     void                           printTo(std::ostream& os, std::string const& indent = "") const override;
     [[nodiscard]] std::string_view name() const noexcept override { return name_; }
+    [[nodiscard]] bool             wasPatched() const noexcept override;
 
     /// @brief the entry stored under key
     /// @throws LookupError when no entry is keyed by key
@@ -110,7 +128,7 @@ private:
     Storage entries_;
     bool    wasParsed_ {false};
 
-    std::string niceName() const { return name_.empty()? "<nameless map>" : name_; }
+    std::string niceName() const { return displayName(name_, "<nameless map>"); }
 
     KeyType parseKey(YAML::Node const& key_node) const;
 };

@@ -48,7 +48,8 @@ class CARLRecipe(ConanFile):
 
     def build(self):
         cmake = CMake(self)
-        cmake.configure()
+        # the exported sources carry no tests/, while CARL_BUILD_TESTS defaults to on for a top-level configure
+        cmake.configure(variables={"CARL_BUILD_TESTS": "OFF"})
         cmake.build()
 
     def package(self):

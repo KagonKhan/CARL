@@ -70,6 +70,42 @@ TEST(ConfigMapIdList, EntryWithoutIdThrowsParsingError) {
     EXPECT_THROW(map.parse(node), CARL::ParsingError);
 }
 
+TEST(ConfigMapIdList, EntryThatFailsToParseIsNotStored) {
+    // The entry is emplaced only once it parsed, so a caller that catches the error sees no half-built entry.
+    CARL::ConfigMap<th::IdItem> map {"items", CARL::MapType::ID_LIST};
+    auto                        node = YAML::Load("items:\n  - id: 7\n    label: [not, a, scalar]");
+    EXPECT_THROW(map.parse(node), CARL::ParsingError);
+    EXPECT_EQ(map.size(), 0u);
+    EXPECT_FALSE(map.contains(7));
+}
+
+TEST(ConfigMapIdList, EntryWithoutIdLeavesTheNodeUntouched) {
+    CARL::ConfigMap<th::IdItem> map {"items", CARL::MapType::ID_LIST};
+    auto                        node = YAML::Load("items:\n  - label: no_id_here");
+    EXPECT_THROW(map.parse(node), CARL::ParsingError);
+
+    YAML::Node const& read_only = node;
+    EXPECT_EQ(read_only["items"][0].size(), 1u);
+    EXPECT_FALSE(read_only["items"][0]["id"].IsDefined());
+}
+
+TEST(ConfigMapIdList, NullNodeIsAnEmptyCollection) {
+    // "items:" with nothing under it is a declared but empty section, the same shape a group accepts
+    CARL::ConfigMap<th::IdItem> map {"items", CARL::MapType::ID_LIST};
+    EXPECT_NO_THROW(map.parse(YAML::Load("items:")));
+    auto result = map.validate();
+    EXPECT_FALSE(result.correct);
+    ASSERT_EQ(result.errors.size(), 1u);
+    EXPECT_EQ(result.errors[0], "items: is empty");
+}
+
+TEST(ConfigMapIdList, OptionalNullNodeIsSuccess) {
+    CARL::ConfigMap<th::IdItem> map {"items", CARL::MapType::ID_LIST, CARL::Required::NO};
+    EXPECT_NO_THROW(map.parse(YAML::Load("items:")));
+    EXPECT_TRUE(map.validate().correct);
+    EXPECT_TRUE(map.empty());
+}
+
 TEST(ConfigMapIdList, NamelessMapParsesFromCurrentNode) {
     CARL::ConfigMap<th::IdItem> map {"", CARL::MapType::ID_LIST};
     auto                        node = YAML::Load("- id: 1\n  label: a\n- id: 2\n  label: b");
@@ -151,6 +187,13 @@ TEST(ConfigMapStandard, NonMapNodeThrows) {
     EXPECT_THROW(map.parse(node), CARL::ParsingError);
 }
 
+TEST(ConfigMapStandard, NullNodeIsAnEmptyCollection) {
+    CARL::ConfigMap<th::ModelEntry, std::string> map {"models", CARL::MapType::STANDARD, CARL::Required::NO};
+    EXPECT_NO_THROW(map.parse(YAML::Load("models:")));
+    EXPECT_TRUE(map.validate().correct);
+    EXPECT_TRUE(map.empty());
+}
+
 TEST(ConfigMapStandard, RequiredAndAbsentIsFailure) {
     CARL::ConfigMap<th::ModelEntry, std::string> map {"models"};
     auto                                         node = YAML::Load("other: 1");
@@ -219,6 +262,14 @@ TEST(ConfigMapValidate, RequiredNotParsedErrorContainsMapName) {
     auto result = map.validate();
     ASSERT_EQ(result.errors.size(), 1u);
     EXPECT_NE(result.errors[0].find("my_items"), std::string::npos);
+}
+
+TEST(ConfigMapValidate, MissingSectionUsesTheSameWordingAsAGroup) {
+    CARL::ConfigMap<th::IdItem> map {"cameras", CARL::MapType::ID_LIST};
+    map.parse(YAML::Load("x: 1"));
+    auto result = map.validate();
+    ASSERT_EQ(result.errors.size(), 1u);
+    EXPECT_EQ(result.errors[0], "cameras: is missing");
 }
 
 TEST(ConfigMapValidate, NullEntryThrows) {
@@ -292,6 +343,19 @@ TEST(ConfigMapPrint, EmptyMapPrintsHeader) {
     map.printTo(os, "");
     std::string out = os.str();
     EXPECT_NE(out.find("models"), std::string::npos);
+}
+
+TEST(ConfigMapPrint, NamelessIdListPrintsReloadableYaml) {
+    // "- " occupies the first two columns, so every line of the entry has to sit two deeper than the bullet
+    CARL::ConfigMap<th::IdItem> map {"", CARL::MapType::ID_LIST};
+    map.parse(YAML::Load("- id: 1\n  label: a\n- id: 2\n  label: b"));
+    std::ostringstream os;
+    map.printTo(os, "");
+
+    auto reloaded = YAML::Load(os.str());
+    ASSERT_TRUE(reloaded.IsSequence());
+    ASSERT_EQ(reloaded.size(), 2u);
+    EXPECT_EQ(reloaded[1]["label"].as<std::string>(), "b");
 }
 
 TEST(ConfigMapPrint, IndentIsApplied) {
@@ -420,6 +484,16 @@ TEST(ConfigMapAccess, IterationOverConstMapWorks) {
 
     EXPECT_EQ(seen, 1u);
     EXPECT_EQ(std::distance(const_map.cbegin(), const_map.cend()), 1);
+}
+
+TEST(ConfigMapAccess, IteratorAndConstIteratorCompareAgainstEachOther) {
+    CARL::ConfigMap<th::IdItem> map {"items", CARL::MapType::ID_LIST};
+    map.parse(YAML::Load("items:\n  - id: 1\n    label: a"));
+
+    auto const& const_map = map;
+    EXPECT_TRUE(map.begin() == const_map.begin());
+    EXPECT_TRUE(map.end() == map.cend());
+    EXPECT_TRUE(map.begin() != map.cend());
 }
 
 TEST(ConfigMapAccess, EmptyMapIterationIsANoop) {

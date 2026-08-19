@@ -39,7 +39,8 @@ public:
     void                           parse(YAML::Node const& node) override;
     [[nodiscard]] ValidationResult validate() const override;
     void                           printTo(std::ostream& os, std::string const& indent) const override;
-    [[nodiscard]] std::string_view name() const noexcept override { return name_; }
+    [[nodiscard]] std::string_view name() const noexcept override       { return name_; }
+    [[nodiscard]] bool             wasPatched() const noexcept override { return source_.isPatched(); }
 
     /// @brief function provided for edge-cases. use sparingly
     /// @details counts as setting the value, so a patched field satisfies validate() and prints as "(patched)"

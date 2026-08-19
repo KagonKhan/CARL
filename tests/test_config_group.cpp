@@ -203,6 +203,24 @@ TEST(ConfigGroupValidate, PresentGroupWithOnlyDefaultedFieldsIsSuccess) {
     EXPECT_EQ(*g.port, 5432);
 }
 
+TEST(ConfigGroupValidate, PatchedFieldSatisfiesAbsentRequiredGroup) {
+    // The section is absent from the YAML, so the group never parsed. Code filled the field in, and a patched field
+    // counts as set, so the group must descend instead of reporting itself missing.
+    th::SecretSection g;
+    g.parse(YAML::Load("something_else: 1"));
+    g.password.patch("from-the-environment");
+    EXPECT_TRUE(g.validate().correct);
+}
+
+TEST(ConfigGroupValidate, UnpatchedAbsentRequiredGroupStillFails) {
+    th::SecretSection g;
+    g.parse(YAML::Load("something_else: 1"));
+    auto result = g.validate();
+    EXPECT_FALSE(result.correct);
+    ASSERT_EQ(result.errors.size(), 1u);
+    EXPECT_EQ(result.errors[0], "database: is missing");
+}
+
 // ============================================================
 //  parse() — node type guards
 // ============================================================

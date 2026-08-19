@@ -2,6 +2,7 @@
 
 #include "utils/exceptions.hpp"
 
+#include <algorithm>
 #include <string>
 
 namespace CARL
@@ -32,7 +33,8 @@ void ConfigGroup::parse(YAML::Node const& node)
 
 [[nodiscard]] ValidationResult ConfigGroup::validate() const
 {
-    if (!wasParsed_) {
+    // a patched field counts as set, so code may fill in a group the config file never mentioned
+    if (!wasParsed_ && !wasPatched()) {
         return required_? ValidationResult::failure("{}: is missing", niceName()) : ValidationResult::success();
     }
 
@@ -65,9 +67,14 @@ void ConfigGroup::printTo(std::ostream& os, std::string const& indent) const
     }
 }
 
+bool ConfigGroup::wasPatched() const noexcept
+{
+    return std::any_of(entries_.begin(), entries_.end(), [] (auto const* entry) { return entry->wasPatched(); });
+}
+
 std::string ConfigGroup::niceName() const
 {
-    return name_.empty()? "<nameless group>" : name_;
+    return displayName(name_, "<nameless group>");
 }
 
 } // namespace CARL

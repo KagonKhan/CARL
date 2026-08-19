@@ -103,7 +103,8 @@ Accessing an unset value triggers an assertion in debug builds. Always validate 
 
 `patch()` sets a value from code rather than from YAML. A patched field counts as set — it satisfies
 `validate()` and prints with a `(patched)` tag — so it is a way to fill a required field the config
-file cannot supply.
+file cannot supply. It also keeps the enclosing group from reporting itself missing, so a section the
+YAML never mentions can be supplied entirely from code.
 
 ### `ConfigGroup` — a named section
 
@@ -263,8 +264,11 @@ its fields:
 
 ```
 database: is missing
-'cameras' is required and missing
+cameras: is missing
 ```
+
+A required map that is present but has no entries reports `cameras: is empty`. A section written with no
+value at all (`cameras:`) counts as present and empty, matching how a group treats it.
 
 ---
 
@@ -385,8 +389,15 @@ Structure comes from the YAML itself:
 | sequence of mappings without `id` | generated struct + `ConfigValue<std::vector<Struct>>` |
 | sequence of scalars or of sequences | generated wrapper struct |
 
-Scalar types widen: a key seen as a float becomes `double`, integers become `int`, `true`/`false`
-becomes `bool`, anything else stays `std::string`.
+Scalar types widen across every entry a key appears in, so `gain: 2` in one entry and `gain: 0.5` in
+the next gives `ConfigValue<double>`. Integers become `int`, `true`/`false` becomes `bool`, anything
+else stays `std::string`.
+
+Type names come from the YAML keys, and one generated type stands for one shape: two sections that
+happen to share a key name share the generated type when their contents agree, and get numbered names
+when they do not. Keys that are not C++ identifiers (`max-encoders`, `2d`, `class`) are renamed for
+the member only — the quoted YAML key keeps its original spelling — and every rename is reported as a
+note.
 
 ### Annotations
 
