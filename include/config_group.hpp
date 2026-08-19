@@ -4,12 +4,13 @@
 #include "config_value.hpp"
 #include "utils/utils.hpp"
 
+#include <string>
 #include <vector>
 
 namespace CARL
 {
 
-/// @brief if a group contains ID member and will be used inside other structures (lists, maps), ID member HAS to be first
+/// @brief A named or nameless section of a config tree. Registration order only decides print order.
 class ConfigGroup : public IConfigValue
 {
 public:
@@ -17,6 +18,7 @@ public:
     [[nodiscard]] ValidationResult validate() const override;
     void                           printTo(std::ostream& os, std::string const& indent = "") const override;
     [[nodiscard]] std::string_view name() const noexcept override { return name_; }
+    [[nodiscard]] bool             wasPatched() const noexcept override;
 
 protected:
     explicit ConfigGroup(std::string name = "", Required required = Required::YES)
@@ -47,6 +49,8 @@ private:
     bool        wasParsed_;
 
     std::vector<IConfigValue*> entries_;
+
+    [[nodiscard]] std::string niceName() const;
 };
 
 } // namespace CARL

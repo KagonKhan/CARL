@@ -11,6 +11,9 @@
 
 #include <cassert>
 #include <optional>
+#include <sstream>
+#include <string>
+#include <utility>
 
 namespace CARL
 {
@@ -36,10 +39,16 @@ public:
     void                           parse(YAML::Node const& node) override;
     [[nodiscard]] ValidationResult validate() const override;
     void                           printTo(std::ostream& os, std::string const& indent) const override;
-    [[nodiscard]] std::string_view name() const noexcept override { return name_; }
+    [[nodiscard]] std::string_view name() const noexcept override       { return name_; }
+    [[nodiscard]] bool             wasPatched() const noexcept override { return source_.isPatched(); }
 
     /// @brief function provided for edge-cases. use sparingly
-    void patch(T value) { value_ = std::move(value); }
+    /// @details counts as setting the value, so a patched field satisfies validate() and prints as "(patched)"
+    void patch(T value)
+    {
+        value_ = std::move(value);
+        source_.markPatched();
+    }
 
     const T& value() const& noexcept { return assertInitialized(), *value_; }
 

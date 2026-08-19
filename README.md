@@ -47,14 +47,18 @@ cmake --build --preset conan-release
 ctest --preset conan-release
 ```
 
-Or manually:
+`yaml-cpp` and `fmt` are found with `find_package`, so a plain `cmake ..` only works if both are
+already installed where CMake can see them (a system package manager, or your own
+`CMAKE_PREFIX_PATH`). Otherwise use the Conan flow above.
 
 ```bash
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build .
-ctest
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/path/to/deps
+cmake --build build
+ctest --test-dir build
 ```
+
+Tests default to on for a top-level build and off when CARL is pulled in with
+`add_subdirectory`. Force either way with `-DCARL_BUILD_TESTS=ON|OFF`.
 
 ### Dependencies
 
@@ -96,6 +100,11 @@ size_t len    = cfg.name->size();   // operator-> for member access
 ```
 
 Accessing an unset value triggers an assertion in debug builds. Always validate first.
+
+`patch()` sets a value from code rather than from YAML. A patched field counts as set — it satisfies
+`validate()` and prints with a `(patched)` tag — so it is a way to fill a required field the config
+file cannot supply. It also keeps the enclosing group from reporting itself missing, so a section the
+YAML never mentions can be supplied entirely from code.
 
 ### `ConfigGroup` — a named section
 
@@ -160,7 +169,7 @@ Each YAML entry is a mapping; the `id` field value becomes the map key.
 
 ```cpp
 struct CameraEntry : CARL::ConfigGroup {
-    CARL::ConfigValue<int>         id    {"id"};    // MUST be registered first
+    CARL::ConfigValue<int>         id    {"id"};
     CARL::ConfigValue<std::string> model {"model"};
     CARL::ConfigValue<int>         zoom  {"zoom"};
 
@@ -180,7 +189,8 @@ cameras:
     zoom: 30
 ```
 
-> The `id` field **must be the first registered entry** in an ID_LIST group.
+> The key is read from the YAML `id` field, so the group must declare a matching `id` member for the
+> value to be readable afterwards. Registration order only affects print order.
 
 #### `MapType::STANDARD` — map keyed by YAML key names
 
@@ -196,6 +206,29 @@ cameras:
   rear:
     model: AXIS-Q6135
     zoom: 30
+```
+
+#### Reading the entries
+
+`ConfigMap` reads like a `std::map`, except it hands out `Group&` instead of the owning pointer it
+stores internally.
+
+```cpp
+CameraEntry&       front = cfg.cameras.at(1);        // throws CARL::LookupError if absent
+CameraEntry const* maybe = cfg.cameras.find(2);      // nullptr if absent
+
+if (cfg.cameras.contains(3)) { /* ... */ }
+std::size_t how_many = cfg.cameras.size();
+bool        none     = cfg.cameras.empty();
+```
+
+Iteration yields `std::pair<KeyType const&, Group&>` in key order. It is a proxy pair, so bind it by
+value or by const reference — never by non-const reference:
+
+```cpp
+for (auto const& [id, camera] : cfg.cameras) {
+    std::cout << id << ": " << *camera.model << " @ " << *camera.zoom << "\n";
+}
 ```
 
 ---
@@ -218,7 +251,24 @@ if (!result.correct) {
 }
 ```
 
-Unknown YAML fields are silently ignored. Missing required fields produce entries in `ValidationResult::errors` with fully-qualified names (`cameras[1].model: is missing`).
+Later parses overlay earlier ones all the way down the tree. For a `ConfigMap` that means an entry
+whose key already exists is merged into rather than replaced, so a second file can override single
+fields of an existing entry and introduce new entries at the same time. Duplicate keys are rejected
+**within one document**, not across files.
+
+Unknown YAML fields are silently ignored. Missing required fields produce entries in
+`ValidationResult::errors` with fully-qualified names (`cameras[1].model: is missing`).
+
+A required group or map that is absent altogether reports itself once rather than reporting each of
+its fields:
+
+```
+database: is missing
+cameras: is missing
+```
+
+A required map that is present but has no entries reports `cameras: is empty`. A section written with no
+value at all (`cameras:`) counts as present and empty, matching how a group treats it.
 
 ---
 
@@ -316,12 +366,84 @@ static_assert(CARL::is_carl_parseable<Color>, "Color needs YAML::convert<> and o
 
 ---
 
+## Generating a model from YAML
+
+`tools/carl_generate.py` turns one complete config file into a CARL model. It needs Python 3 and
+PyYAML.
+
+```bash
+python3 tools/carl_generate.py config.yaml -o include/generated -n myapp -r AppConfig -b myapp
+```
+
+It writes `<basename>_config.hpp` (the tree of `ConfigGroup`, `ConfigMap` and `ConfigValue`) and
+`<basename>_extensions.hpp` (plain types for shapes CARL has no group for, with their
+`YAML::convert` and `operator<<`).
+
+Structure comes from the YAML itself:
+
+| YAML | Generated |
+|------|-----------|
+| mapping of scalars | `ConfigGroup` with one `ConfigValue` per key |
+| mapping whose values are similar mappings | `ConfigMap<Entry, KeyType>`, `MapType::STANDARD` |
+| sequence of mappings that all have `id` | `ConfigMap<Entry>`, `MapType::ID_LIST` |
+| sequence of mappings without `id` | generated struct + `ConfigValue<std::vector<Struct>>` |
+| sequence of scalars or of sequences | generated wrapper struct |
+
+Scalar types widen across every entry a key appears in, so `gain: 2` in one entry and `gain: 0.5` in
+the next gives `ConfigValue<double>`. Integers become `int`, `true`/`false` becomes `bool`, anything
+else stays `std::string`.
+
+Type names come from the YAML keys, and one generated type stands for one shape: two sections that
+happen to share a key name share the generated type when their contents agree, and get numbered names
+when they do not. Keys that are not C++ identifiers (`max-encoders`, `2d`, `class`) are renamed for
+the member only — the quoted YAML key keeps its original spelling — and every rename is reported as a
+note.
+
+### Annotations
+
+One file cannot show which keys are optional, so declare it inline. Directives are written with a
+leading `!` and are read from a trailing comment on the key's line, or from a standalone comment line
+directly above it — prose comments are never mistaken for directives.
+
+```yaml
+video:
+  hw: cpu              # !default    -> Default<std::string>{"cpu"}
+  maxEncoders: 8       # !optional   -> Required::NO
+bladeRecognizer:       # !optional   -> optional group
+cameras:               # !map        -> force a keyed ConfigMap
+recognizers:           # !group      -> force a group of nested groups
+stations:              # !list       -> keep a sequence out of ID_LIST mode
+```
+
+A YAML tag names the C++ type directly. Tags naming your own type require you to supply
+`YAML::convert<T>` and `operator<<`; the generated header `static_assert`s on
+`is_carl_parseable<T>` so a missing one is a readable compile error. Pass `--tag-include` to have
+your header included above that assert.
+
+```yaml
+        transformationMatrix: !cv::Mat   # ConfigValue<cv::Mat>, you provide convert + operator<<
+        radius: !double 2                # a builtin tag is just a type override
+```
+
+Within a `ConfigMap`, keys present in only some entries are inferred optional automatically. The
+generator prints a note for every such inference, and for every shape it had to push into a
+generated struct — those lose per-field validation, so a bad value reports against the whole field
+rather than the exact path.
+
+---
+
 ## Error handling
 
 | Situation | Behaviour |
 |-----------|-----------|
 | YAML is structurally wrong (sequence where map expected) | throws `CARL::ParsingError` |
+| Scalar where a group or map was expected (`server: hello`) | throws `CARL::ParsingError` |
 | Field type mismatch (`x: notanumber` for `ConfigValue<int>`) | throws `CARL::ParsingError` |
 | Required field absent | `validate()` returns failure with field name in errors |
-| Duplicate `id` in `ID_LIST` map | throws `CARL::ParsingError` |
+| Required group or map absent | `validate()` returns one failure naming the section |
+| Duplicate `id` within one `ID_LIST` document | throws `CARL::ParsingError` |
+| `ConfigMap::at()` with an unknown key | throws `CARL::LookupError` |
 | Accessing unset value | `assert` in debug builds; always validate before accessing |
+
+Every exception CARL throws derives from `CARL::FormattedException`, and therefore from
+`std::runtime_error`. `parse()` does not let raw `YAML::Exception` escape.

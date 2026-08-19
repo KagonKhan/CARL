@@ -4,6 +4,7 @@
 #include <fmt/core.h>
 
 #include <stdexcept>
+#include <utility>
 
 namespace CARL
 {
@@ -16,6 +17,12 @@ struct FormattedException : std::runtime_error
 };
 
 struct ParsingError : FormattedException
+{
+    using FormattedException::FormattedException;
+};
+
+/// @brief thrown by keyed lookups that find no entry, see ConfigMap::at
+struct LookupError : FormattedException
 {
     using FormattedException::FormattedException;
 };
